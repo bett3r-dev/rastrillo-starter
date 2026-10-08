@@ -43,7 +43,7 @@ func TestMain(m *testing.M) {
 
 // newApp builds the whole app per test over its own copy of the
 // migrated database, exactly as main.go does.
-func newApp(t *testing.T) http.Handler {
+func newApp(t *testing.T) (http.Handler, *db.DB) {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	d, err := db.Open(schema.Path(t), logger)
@@ -55,7 +55,7 @@ func newApp(t *testing.T) http.Handler {
 	if err != nil {
 		t.Fatalf("App: %v", err)
 	}
-	return mux
+	return mux, d
 }
 
 func get(t *testing.T, h http.Handler, target string) *httptest.ResponseRecorder {

@@ -38,7 +38,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null)
 # and a suite running beside it would be measured too.
 .NOTPARALLEL:
 
-.PHONY: build release version-check test vet fmt-check staticcheck govulncheck gitleaks budget perf migration-check ci
+.PHONY: build release version-check test vet fmt-check staticcheck govulncheck gitleaks budget perf migration-check contexts ci dev observe observe-run observe-down
 
 RASTRILLO := go run amadan.net/rastrillo/rastrillo/cmd/rastrillo
 
@@ -47,6 +47,49 @@ RASTRILLO := go run amadan.net/rastrillo/rastrillo/cmd/rastrillo
 # producing an artifact.
 build:
 	CGO_ENABLED=0 go build ./...
+
+# dev is the edit loop: rastrillo dev rebuilds and restarts the server on
+# every save under internal/, cmd/ and the rest of its watch list. The
+# templates and static/ are go:embed'ed, so a rebuild is the only way a
+# change reaches the page. MYAPP_DEV_RELOAD makes every page reload
+# itself once the new build is serving (devreload.go). It serves the
+# real myapp.db: point DEV_DB at a copy to experiment. Override per run:
+#   make dev DEV_ADDR=:8091 DEV_DB=/tmp/scratch.db
+#
+# rastrillo dev also runs rastrillo generate on every rebuild, which
+# writes gen/ even with no manifests; that empty router fails go vet, so
+# the trap removes it when the loop stops (Ctrl-C included). The day a
+# manifest lands, gen/ is source: drop the trap and the .gitignore line.
+DEV_ADDR ?= :8080
+DEV_DB ?= myapp.db
+DEV_ORIGIN ?= http://localhost$(DEV_ADDR)
+dev:
+	trap 'rm -rf gen' EXIT INT TERM; \
+	CGO_ENABLED=0 MYAPP_DEV_RELOAD=1 MYAPP_ORIGIN=$(DEV_ORIGIN) $(RASTRILLO) dev -- -addr $(DEV_ADDR) -db $(DEV_DB)
+
+# observe is the Grafana stack for local work (ops/observability at the
+# repository root): an OpenTelemetry Collector in front of Tempo,
+# Prometheus and Loki, and Grafana on http://localhost:3000 with the
+# myapp dashboard provisioned. observe-run is make dev exporting to it:
+# traces, metrics and logs are pushed every 5s, and flushed when
+# rastrillo dev restarts the server on a save (the same SIGTERM a
+# hibernating instance gets). Name the tenant a run reports as with
+# OBSERVE_TENANT; run two on different DEV_ADDRs and DEV_DBs to see the
+# dashboard split by tenant.
+OBSERVE_COMPOSE := docker compose -f ../../ops/observability/compose.yaml
+OBSERVE_TENANT ?= local
+observe:
+	$(OBSERVE_COMPOSE) up -d --wait
+	@echo "Grafana: http://localhost:3000/d/myapp-overview/myapp"
+
+observe-run:
+	OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 OTEL_METRIC_EXPORT_INTERVAL=5000 \
+	OTEL_BSP_SCHEDULE_DELAY=1000 OTEL_BLRP_SCHEDULE_DELAY=1000 MYAPP_TENANT=$(OBSERVE_TENANT) \
+	$(MAKE) dev
+
+# The stack's data survives this in a named volume; add -v to drop it.
+observe-down:
+	$(OBSERVE_COMPOSE) down
 
 # release is what ships. -s -w drops the symbol table and DWARF, which on
 # this family's apps is 23-31% off the binary and 45-53% off the
@@ -190,6 +233,11 @@ gitleaks:
 migration-check:
 	go run amadan.net/rastrillo/rastrillo/cmd/rastrillo migration check
 
+# contexts reads the app's source files, which Go's test cache cannot
+# see as inputs, so it runs uncached on its own.
+contexts:
+	CGO_ENABLED=0 go test -count=1 -run TestNoJoinsAcrossContexts ./internal/myapptest/
+
 # ci is the one gate: what a runner executes and what you run before
 # pushing are the same definition. amadan's runner falls back to this
 # target when .amadan/ci is absent; ci.d/ carries the same targets,
@@ -197,4 +245,4 @@ migration-check:
 # fails the build the moment models.go and migrations/ disagree,
 # instead of at boot on whatever machine notices next. If the app
 # declares manifest resources, also add: rastrillo generate --check
-ci: vet fmt-check staticcheck govulncheck gitleaks budget test perf migration-check
+ci: vet fmt-check staticcheck govulncheck gitleaks budget test perf migration-check contexts

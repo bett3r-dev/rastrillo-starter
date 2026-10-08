@@ -3,6 +3,7 @@ package myapptest
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -14,44 +15,34 @@ import (
 // links: /static/tokens.<16 hex>.css.
 var hashedStylesheet = regexp.MustCompile(`/static/tokens\.[0-9a-f]{16}\.css`)
 
-// These two tests are about the PLACEHOLDER index page, and they are
-// yours to rewrite. They ship because a scaffold whose suite asserts
-// nothing teaches nothing, not because "/" answering 200 with those
-// words in it is a property of your app.
-//
-// The first feature that breaks them is sign-in, which is also the
-// first feature most apps add: put "/" in a Group behind
-// sessions.Require and a signed-out GET is a 303 to SigninPath, so
-// the status assertion fails and the redirect's body carries neither
-// the heading nor a stylesheet link. That is the app working. Point
-// them at a page that is public in your app, or delete them — the
-// rest of this file (the asset URLs, the error page) is about the
-// framework's behaviour rather than the placeholder's, and keeps
-// earning its place.
-//
-// Said in the failure messages too, and not only here. The reader who
-// needs it is looking at a red gate, and the gate prints messages
-// rather than source.
-//
-// Each test's first statement is t.Parallel(): anything before it runs
-// serially, and a fixture built there is held for the whole run.
-func TestIndexRenders(t *testing.T) {
+// "/" is behind sign-in, so the public page is /signin.
+func TestSigninRenders(t *testing.T) {
 	t.Parallel()
-	rec := get(t, newApp(t), "/")
+	h, _ := newApp(t)
+	rec := get(t, h, "/signin")
 	if rec.Code != http.StatusOK {
-		t.Fatalf("GET /: status %d, want 200. If you have put %q behind sign-in this is the placeholder test, not a fault: a signed-out GET redirects, and this test is yours to repoint or delete", rec.Code, "/")
+		t.Fatalf("GET /signin: status %d, want 200", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "this is a rastrillo app") {
-		t.Errorf("GET /: page is missing its heading. If you have replaced the placeholder index this test is yours to rewrite:\n%s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "Sign in") {
+		t.Errorf("GET /signin: page is missing its heading:\n%s", rec.Body.String())
 	}
 }
 
-func TestIndexLinksFingerprintedStylesheet(t *testing.T) {
+func TestSignedOutHomeRedirectsToSignin(t *testing.T) {
 	t.Parallel()
-	h := newApp(t)
-	href := hashedStylesheet.FindString(get(t, h, "/").Body.String())
+	h, _ := newApp(t)
+	rec := get(t, h, "/")
+	if rec.Code != http.StatusSeeOther || !strings.HasPrefix(rec.Header().Get("Location"), "/signin") {
+		t.Fatalf("GET / signed out: %d to %q", rec.Code, rec.Header().Get("Location"))
+	}
+}
+
+func TestSigninLinksFingerprintedStylesheet(t *testing.T) {
+	t.Parallel()
+	h, _ := newApp(t)
+	href := hashedStylesheet.FindString(get(t, h, "/signin").Body.String())
 	if href == "" {
-		t.Fatal("index page links no fingerprinted stylesheet. If you have put \"/\" behind sign-in, the redirect body has no <link> in it and this test wants pointing at a page that is still public")
+		t.Fatal("signin page links no fingerprinted stylesheet")
 	}
 	rec := get(t, h, href)
 	if rec.Code != http.StatusOK {
@@ -66,7 +57,8 @@ func TestIndexLinksFingerprintedStylesheet(t *testing.T) {
 // file always shows on an ordinary reload.
 func TestBareAssetNameStaysFresh(t *testing.T) {
 	t.Parallel()
-	rec := get(t, newApp(t), "/static/tokens.css")
+	h, _ := newApp(t)
+	rec := get(t, h, "/static/tokens.css")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /static/tokens.css: status %d, want 200", rec.Code)
 	}
@@ -92,5 +84,39 @@ func TestErrorPageRendersFrameworkPartial(t *testing.T) {
 	}
 	if !strings.Contains(body, "abc123") {
 		t.Errorf("ErrorPage body missing the ref:\n%s", body)
+	}
+}
+
+func TestEveryResponseCarriesACorrelationID(t *testing.T) {
+	t.Parallel()
+	h, _ := newApp(t)
+	// A request nobody traced gets a trace of its own: 32 hex digits.
+	rec := get(t, h, "/signin")
+	if id := rec.Header().Get("X-Correlation-Id"); len(id) != 32 || strings.Trim(id, "0123456789abcdef") != "" {
+		t.Fatalf("X-Correlation-Id = %q, want a fresh trace id", id)
+	}
+	// A request made inside someone else's trace joins it.
+	req := httptest.NewRequest(http.MethodGet, "/signin", nil)
+	req.Header.Set("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if got := rec.Header().Get("X-Correlation-Id"); got != "4bf92f3577b34da6a3ce929d0e0e4736" {
+		t.Fatalf("X-Correlation-Id = %q, want the caller's trace id", got)
+	}
+}
+
+// The dev refresh (make dev, MYAPP_DEV_RELOAD) never reaches a build
+// that runs without it: no /dev/boot route, no script on the page.
+func TestDevReloadIsOffWithoutTheEnv(t *testing.T) {
+	t.Parallel()
+	if os.Getenv(myapp.DevReloadEnv) != "" {
+		t.Skipf("%s is set in this environment", myapp.DevReloadEnv)
+	}
+	h, _ := newApp(t)
+	if rec := get(t, h, "/dev/boot"); rec.Code == http.StatusOK {
+		t.Errorf("GET /dev/boot: 200 with the refresh off")
+	}
+	if body := get(t, h, "/signin").Body.String(); strings.Contains(body, "devreload") {
+		t.Errorf("signin page loads devreload.js with the refresh off")
 	}
 }

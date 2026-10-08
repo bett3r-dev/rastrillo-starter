@@ -1,0 +1,12 @@
+{{define "content"}}
+{{template "page-header" dict "Title" "Notes" "Sub" "What everyone here wrote down, newest first." "ActionHref" "/notes/new" "ActionLabel" "Write a note" "ActionIcon" "plus"}}
+{{if not .Data}}
+{{template "empty-state" dict "Title" "No notes yet" "Body" "Notes are the example screen of this starter: write one, correct it, and follow both on What happened." "ActionHref" "/notes/new" "ActionLabel" "Write a note"}}
+{{else}}
+<div rst-list>
+{{range .Data}}
+  <div rst-row><span rst-row-main><span class="row-name">{{.Title}}</span><small rst-row-sub>by <bdi>{{.Author}}</bdi>{{with .Body}} · {{.}}{{end}}</small></span> <a href="/notes/{{.ID}}/correct">Correct</a></div>
+{{end}}
+</div>
+{{end}}
+{{end}}

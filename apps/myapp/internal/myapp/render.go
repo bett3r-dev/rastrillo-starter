@@ -5,8 +5,10 @@ import (
 	"embed"
 	"html/template"
 	"net/http"
+	"strings"
 
 	"amadan.net/rastrillo/rastrillo"
+	"amadan.net/rastrillo/rastrillo/flash"
 	"amadan.net/rastrillo/rastrillo/ui"
 
 	"myapp/internal/myapp/icons"
@@ -16,57 +18,93 @@ import (
 var appFS embed.FS
 
 // assets fingerprints static/: {{asset "static/tokens.css"}} in a
-// template returns a content-hashed URL, served immutable-cacheable by
-// the handler App mounts.
+// template returns a content-hashed URL, served immutable-cacheable.
 var assets = rastrillo.NewAssets(appFS)
 
+// pageNames is every page template: layout.html plus templates/<name>.html.
+var pageNames = []string{"errors", "signin", "signup", "notes", "note_new", "note_correct", "changes"}
+
 // pages is one *template.Template per page, each combining layout.html
-// with that page's own file — kept separate so every page can define a
-// template named "content" without colliding with the others.
+// with that page's own file, so every page can define "content".
 var pages = map[string]*template.Template{}
 
 func init() {
-	for _, name := range []string{"index", "errors"} {
+	for _, name := range pageNames {
 		pages[name] = template.Must(
-			// ui's partials and their helpers first, so every page can
-			// call one without registering anything. WithIcons points
-			// ui's two icon seams at the app's own set
-			// (internal/myapp/icons, scaffolded by rastrillo new) —
-			// both of them, always: passing only icon would leave
-			// iconAssets on the framework default and silently break
-			// cdn and js delivery. iconAssets is whatever <head> markup
-			// the chosen delivery needs, empty for the vendored-inline
-			// default, so the layout calls it unconditionally and
-			// switching delivery later needs no template edit.
 			template.Must(template.New("layout").
 				Funcs(ui.Funcs(ui.WithIcons(icons.Icon, icons.Assets))).
-				Funcs(template.FuncMap{"asset": assets.Path}).
+				Funcs(template.FuncMap{
+					"asset":   assets.Path,
+					"tone":    flashTone,
+					"here":    here,
+					"devBoot": devBootID,
+				}).
 				ParseFS(ui.Templates(), "*.html")).
-				// Then the app's own: the shell and this page's body.
 				ParseFS(appFS, "templates/layout.html", "templates/"+name+".html"))
 	}
 }
 
+// Page is what every template receives.
+type Page struct {
+	Title  string
+	Path   string       // the request's path, for the nav's aria-current
+	Member *Member      // signed-in member, nil on the public pages
+	Flash  *flash.Flash // one notice, taken once per page
+	Data   any
+}
+
 // render executes name's layout into a buffer before anything touches
 // the wire: a template error becomes a clean 500 instead of garbage
-// appended to a half-written page, and headers (flash cookies, say)
-// stay settable until the status line is written.
-func render(w http.ResponseWriter, name string, data any) {
+// appended to a half-written page.
+func (a *app) render(w http.ResponseWriter, r *http.Request, name, title string, data any) {
+	pg := Page{Title: title, Path: r.URL.Path, Data: data}
+	if m, ok := a.member(r); ok {
+		pg.Member = &m
+	}
+	if f, ok := flash.Take(w, r); ok {
+		pg.Flash = &f
+	}
+	renderPage(w, name, pg)
+}
+
+func renderPage(w http.ResponseWriter, name string, pg Page) {
 	var buf bytes.Buffer
-	if err := pages[name].ExecuteTemplate(&buf, "layout", data); err != nil {
+	if err := pages[name].ExecuteTemplate(&buf, "layout", pg); err != nil {
 		http.Error(w, "something went wrong", http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	buf.WriteTo(w)
 }
 
-// ErrorPage renders the "errors" page — templates/errors.html, which
-// wraps ui's error-page partial in the layout — for status inside ref
-// (rastrillo.NewRef, or empty when there is none to show). It is the
-// rastrillo.ErrorPageFunc cmd/myapp/main.go points Options.ErrorPage at,
-// so a panic gets the same page a handled failure would; wire it to
-// Ctx.ErrorPage too as the app grows handlers of its own.
+// ErrorPage renders templates/errors.html for status, with ref the
+// handle the log line carries. It is the rastrillo.ErrorPageFunc
+// main.go points Options.ErrorPage at, so a panic gets the same page a
+// handled failure does.
 func ErrorPage(w http.ResponseWriter, r *http.Request, status int, ref string) {
 	w.WriteHeader(status)
-	render(w, "errors", map[string]any{"Status": status, "Ref": ref})
+	renderPage(w, "errors", Page{Title: "Something went wrong", Path: r.URL.Path, Data: map[string]any{"Status": status, "Ref": ref}})
+}
+
+// flashTone maps a flash kind to a callout tone.
+func flashTone(kind string) string {
+	switch kind {
+	case "warning":
+		return "warning"
+	case "error":
+		return "negative"
+	default:
+		return "positive"
+	}
+}
+
+// here reports whether path is inside the nav section rooted at
+// section: "/" is only itself, any other section owns its subpaths,
+// so the nav marks the section a form page belongs to as well as its
+// list.
+func here(path, section string) bool {
+	if section == "/" {
+		return path == "/"
+	}
+	return path == section || strings.HasPrefix(path, section+"/")
 }

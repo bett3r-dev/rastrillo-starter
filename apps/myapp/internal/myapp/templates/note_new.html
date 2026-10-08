@@ -1,0 +1,10 @@
+{{define "content"}}
+{{template "page-header" dict "Title" "Write a note" "Sub" "Everyone on this instance will see it."}}
+<div rst-box>
+<form rst-form method="post" action="/notes">
+  {{template "field-text" dict "Name" "title" "Label" "Title" "Value" (index .Data.Values "title") "Required" true "Autofocus" true "Error" (index .Data.Errors "title")}}
+  {{template "field-text" dict "Name" "body" "Label" "Note" "Value" (index .Data.Values "body") "Error" (index .Data.Errors "body")}}
+  {{template "form-foot" dict "Submit" "Write note" "CancelHref" "/" "CancelLabel" "Cancel"}}
+</form>
+</div>
+{{end}}

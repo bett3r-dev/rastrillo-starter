@@ -6,3 +6,8 @@
 /myapp.db
 /myapp.db-wal
 /myapp.db-shm
+
+# make dev's rastrillo generate writes an empty router here while
+# manifest/ holds no manifests; make dev removes it on exit (see the
+# Makefile). The day a manifest lands, gen/ is source: delete this.
+/gen/

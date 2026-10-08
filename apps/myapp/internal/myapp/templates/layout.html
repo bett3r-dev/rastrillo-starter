@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width">
-<title>{{block "title" .}}Hello{{end}}</title>
+<title>{{.Title}} · myapp</title>
 <link rel="stylesheet" href="{{asset "static/tokens.css"}}">
 <link rel="stylesheet" href="{{asset "static/theme.css"}}">
 <script defer src="{{asset "static/rastrillo.js"}}"></script>
@@ -12,6 +12,7 @@
 <script defer src="{{asset "static/select.js"}}"></script>
 <script defer src="{{asset "static/calendar.js"}}"></script>
 <script defer src="{{asset "static/datetime.js"}}"></script>
+{{with devBoot}}<script defer src="{{asset "static/devreload.js"}}" data-boot="{{.}}"></script>{{end}}
 {{/* head is the app's own slot in <head>: a favicon, a meta tag, one
      more stylesheet. Empty by default, last in the head so an app's
      own CSS wins over the framework's, and the only block in the
@@ -22,7 +23,7 @@
 <div rst-shell-topbar>
 <a rst-skip href="#main">{{T "rastrillo.ui.shell_skip"}}</a>
 <header rst-shell-bar>
-{{block "brand" .}}<a rst-shell-brand href="/">{{T "rastrillo.ui.shell_home"}}</a>{{end}}
+{{block "brand" .}}<a rst-shell-brand href="/">myapp</a>{{end}}
 {{/* The narrow layout. Below 800px the bar's tail — nav, account,
      locale — hides behind this disclosure; above it, tokens.css hides
      the summary and gives [rst-shell-tail] display: contents, so the
@@ -59,22 +60,32 @@
      Use a descendant selector, or target [rst-shell-nav] directly.
      docs/site/templates.md says the same thing where an upgrader will
      meet it. */}}
+{{/* Signed out, the bar is the brand alone: the nav and the account
+     menu need a member. */}}
+{{with .Member}}
 <details rst-shell-menu name="rst-shell-menu"><summary>{{icon "menu"}}{{T "rastrillo.ui.shell_menu"}}</summary></details>
 <div rst-shell-tail>
-<nav rst-shell-nav>{{block "nav" .}}{{end}}</nav>
+<nav rst-shell-nav aria-label="Sections">{{block "nav" $}}
+  <a href="/"{{if or (here $.Path "/") (here $.Path "/notes")}} aria-current="page"{{end}}>{{icon "pencil"}}Notes</a>
+  <a href="/changes"{{if here $.Path "/changes"}} aria-current="page"{{end}}>{{icon "history"}}What happened</a>
+{{end}}</nav>
 <details rst-dropdown rst-shell-account name="rst-menus">
-<summary>{{T "rastrillo.ui.shell_account"}}<span rst-caret aria-hidden="true">{{icon "chevron-down"}}</span></summary>
+<summary><bdi>{{.Name}}</bdi><span rst-caret aria-hidden="true">{{icon "chevron-down"}}</span></summary>
 {{/* account here is the dropdown's MENU BODY, not the whole menu: the
      layout owns the details/summary, so an override supplies only the
      links that sit inside [rst-dropdown-menu]. Sidebar's account block
      is the other shape — a bare slot in the rail — so moving a block
      between the two shells needs an edit. */}}
-<div rst-dropdown-menu>{{block "account" .}}{{end}}</div>
+<div rst-dropdown-menu>{{block "account" $}}
+  <form method="post" action="/signout" data-busy="false"><button type="submit">{{icon "log-out"}}Sign out</button></form>
+{{end}}</div>
 </details>
-{{block "locale" .}}{{end}}
+{{block "locale" $}}{{end}}
 </div>
+{{end}}
 </header>
 <main rst-page id="main">
+{{with .Flash}}{{template "callout" dict "Body" .Message "Tone" (tone .Kind)}}{{end}}
 {{template "content" .}}
 </main>
 <footer rst-shell-foot>{{block "foot" .}}{{end}}</footer>

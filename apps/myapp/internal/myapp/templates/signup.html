@@ -1,0 +1,12 @@
+{{define "content"}}
+{{template "page-header" dict "Title" "Join" "Sub" "One account per person."}}
+<div rst-box>
+{{with .Data.Error}}{{template "callout" dict "Body" . "Tone" "negative" "Alert" true}}{{end}}
+<form rst-form method="post" action="/signup">
+  {{template "field-text" dict "Name" "name" "Label" "Your name" "Required" true "Autocomplete" "name" "Autofocus" true}}
+  {{template "field-text" dict "Name" "email" "Label" "Email" "Type" "email" "Value" .Data.Email "Required" true "Autocomplete" "username"}}
+  {{template "field-text" dict "Name" "password" "Label" "Password" "Type" "password" "Required" true "Autocomplete" "new-password" "Minlength" "8"}}
+  {{template "form-foot" dict "Submit" "Join" "CancelHref" "/signin" "CancelLabel" "Sign in instead"}}
+</form>
+</div>
+{{end}}

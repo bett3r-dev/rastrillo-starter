@@ -1,5 +1,21 @@
 # myapp
 
+The first app of this repository. The project's conventions (change
+records, scenarios, bounded contexts, telemetry) are in the root
+`AGENTS.md` and apply here in full; this file adds the app's own
+contexts and rastrillo's scaffold conventions.
+
+## Contexts
+
+- **accounts** (`reasons_accounts.go`, `CONTEXT-accounts.md`): `members`.
+- **notes** (`reasons_notes.go`, `CONTEXT-notes.md`): `notes`. The
+  example context: replace it with the first real one and keep the
+  shape.
+
+---
+
+# rastrillo scaffold conventions
+
 A [rastrillo](https://amadan.net/rastrillo/rastrillo) app. Read the
 framework's own SKILL.md (repo root, or in the module cache) before
 writing app code — it is the whole app story in ~15KB. The conventions
@@ -38,15 +54,10 @@ mechanically.
 - Screens work with JavaScript disabled; destructive actions get their
   own confirm-page URL.
 - The gate is `make ci` (vet, gofmt, staticcheck, govulncheck, gitleaks, budgets, tests, the perf lane and the migration check), the same definition CI runs. Run it before every push. `CGO_ENABLED=0` throughout: the stack is cgo-free by design. The Makefile names the Go release the gate and `make release` use (`GOTOOLCHAIN`); raise it with each Go security release.
-- Two of the scaffolded tests are about the **placeholder index page**
-  and are yours to rewrite: `TestIndexRenders` and
-  `TestIndexLinksFingerprintedStylesheet`. Putting `/` behind sign-in
-  turns a signed-out GET into a 303 and both fail — that is the app
-  working, not the gate finding a fault. Repoint them at a page that
-  is public in your app, or delete them. The gate is a definition of
-  done for *your* tests; it does not promise the ones you were handed
-  are still describing your app. `TestPerfScreens` will then want
-  `Signin` in its config, so it measures the page rather than the redirect.
+- The scaffold's two placeholder index tests were repointed at
+  `/signin`, the public page (`index_test.go`), and `TestPerfScreens`
+  signs in through `/signup` first, so it measures the pages rather
+  than the redirect.
 
 ## Testing and budgets
 

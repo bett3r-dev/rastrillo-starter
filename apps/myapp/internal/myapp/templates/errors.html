@@ -1,9 +1,1 @@
-{{/* errors.html — the app's error page: layout.html's content block
-     rendered by render.go's ErrorPage, which cmd/<app>/main.go points
-     Options.ErrorPage at (so a panic gets this page) and which the app
-     can wire to Ctx.ErrorPage too as handlers grow. All the wording
-     and layout live in the partial below — restyle the error page by
-     editing this file, or hand it Title/Body/HomeHref/BackHref to
-     override the partial's own catalog defaults; see
-     ui/partials/error-page.html for what it accepts. */}}
-{{define "content"}}{{template "error-page" dict "Status" .Status "Ref" .Ref}}{{end}}
+{{define "content"}}{{template "error-page" dict "Status" .Data.Status "Ref" .Data.Ref}}{{end}}

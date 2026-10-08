@@ -6,6 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -41,7 +43,11 @@ func TestPerfScreens(t *testing.T) {
 	defer closeAll()
 	// Screens behind sign-in need Signin; a {param} route needs a Paths
 	// entry whose row this test seeds first.
-	perftest.Screens(t, perftest.ScreenConfig{Routes: r, Handler: h})
+	// Every screen but /signin and /signup is behind sign-in: the
+	// client joins first, as a member would, and writes note 1 so the
+	// correction screen is a real one.
+	perftest.Screens(t, perftest.ScreenConfig{Routes: r, Handler: h, Signin: joinAs("Perf"),
+		Paths: map[string]string{"/notes/{id}/correct": "/notes/1/correct"}})
 }
 
 // A cold start, from exec to the first byte of "/", held to 500ms.
@@ -69,6 +75,32 @@ func TestPerfBoot(t *testing.T) {
 			}
 			return h, func() { closeAll(); d.Close() }, nil
 		},
-		Path: "/",
+		Path: "/signin", // the public page; "/" is behind sign-in
 	})
+}
+
+// joinAs signs the perf client in by joining through the real form,
+// with the Origin header csrf.Protect requires, then writes a note.
+func joinAs(name string) func(c *http.Client, base string) {
+	return func(c *http.Client, base string) {
+		send(c, base+"/signup", url.Values{"name": {name}, "email": {strings.ToLower(name) + "@example.test"}, "password": {"correct horse battery"}})
+		send(c, base+"/notes", url.Values{"title": {"First"}, "body": {"Written by the perf lane."}})
+	}
+}
+
+func send(c *http.Client, target string, form url.Values) {
+	req, err := http.NewRequest(http.MethodPost, target, strings.NewReader(form.Encode()))
+	if err != nil {
+		panic(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	// The same-origin evidence is the app's configured origin, not
+	// the listener's address: csrf.Protect compares against the
+	// former.
+	req.Header.Set("Origin", testOrigin)
+	res, err := c.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	res.Body.Close()
 }

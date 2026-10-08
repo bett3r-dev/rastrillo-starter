@@ -4,6 +4,9 @@ import (
 	"embed"
 
 	"amadan.net/rastrillo/rastrillo/migrate"
+	"amadan.net/rastrillo/rastrillo/sessions"
+
+	"myproject/libs/changes"
 )
 
 //go:embed migrations/*.sql
@@ -39,4 +42,7 @@ var Schema = migrate.MustFromFS(migrationFS, "myapp")
 // migrations another one reads (auth after sessions) goes first.
 // Get this line wrong and either boot silently skips a subsystem's
 // tables, or generate/check try to drop them.
-var BootSchema = migrate.Merge(Schema)
+//
+// sessions for sign-in, then changes (libs/changes) for the change
+// record, then this app's own tables.
+var BootSchema = migrate.Merge(sessions.Schema, changes.Schema, Schema)

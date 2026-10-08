@@ -1,0 +1,12 @@
+{{define "content"}}
+{{template "page-header" dict "Title" "Sign in" "Sub" "Sign in to this instance."}}
+<div rst-box>
+{{with .Data.Error}}{{template "callout" dict "Body" . "Tone" "negative" "Alert" true}}{{end}}
+<form rst-form method="post" action="/signin">
+  {{with .Data.ReturnTo}}<input type="hidden" name="return_to" value="{{.}}">{{end}}
+  {{template "field-text" dict "Name" "email" "Label" "Email" "Type" "email" "Value" .Data.Email "Required" true "Autocomplete" "username" "Autofocus" true}}
+  {{template "field-text" dict "Name" "password" "Label" "Password" "Type" "password" "Required" true "Autocomplete" "current-password"}}
+  {{template "form-foot" dict "Submit" "Sign in" "CancelHref" "/signup" "CancelLabel" "Join instead"}}
+</form>
+</div>
+{{end}}
