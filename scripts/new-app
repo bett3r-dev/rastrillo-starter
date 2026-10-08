@@ -35,13 +35,13 @@ go -C "$first" build -o "$bin/rastrillo" amadan.net/rastrillo/rastrillo/cmd/rast
 
 (cd apps && "$bin/rastrillo" new "$@" "$name")
 
+# Only the replace: go mod tidy would drop a require nothing imports
+# yet, and adds it back with the app's first import of libs.
 cat >> "apps/$name/go.mod" <<EOF
 
 // Shared code lives in the repository's libs module (ADR 0002). The
 // replace, not go.work, is what makes this module build: a release,
 // a container or any runner without the workspace file sees it.
-require $project/libs v0.0.0
-
 replace $project/libs => ../../libs
 EOF
 (cd "apps/$name" && go mod tidy)
