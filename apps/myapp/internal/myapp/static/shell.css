@@ -1,0 +1,51 @@
+/* shell.css — the slide between the index and a page on a phone, for
+   the sidebar and console shells, the only layouts that link it.
+
+   It is a file of its own because the opt-in cannot be scoped: written
+   in tokens.css, @view-transition would opt every page of every shell
+   into cross-document transitions at narrow widths, the sign-in page
+   included. Both documents must opt in, and a stylesheet only these two
+   shells link is exactly that set. Delete it (and its <link>) and
+   navigation is instant; nothing else changes.
+
+   shell.js types each transition "forward" or "back" in pagereveal.
+   Each :active-view-transition-type() selector is a rule of its own: an
+   engine that does not know the pseudo-class drops the whole rule, and a
+   co-listed selector would take its neighbours with it (the trap the
+   console's rules in tokens.css record). The slide is a physical
+   translateX, so a right-to-left page has four rules of its own that
+   slide the other way. Under reduced motion nothing opts in and
+   navigation is instant; the block at the end sets every animation here
+   to none as well, which is the form the motion gate reads. */
+@media (max-width: 799.98px) and (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+  ::view-transition-group(root) { animation-duration: 0.32s; animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1); }
+  html:active-view-transition-type(forward)::view-transition-old(root) { animation: 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both rst-shell-out-start; }
+  html:active-view-transition-type(forward)::view-transition-new(root) { animation: 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both rst-shell-in-end; }
+  html:active-view-transition-type(back)::view-transition-old(root) { animation: 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both rst-shell-out-end; z-index: 1; }
+  html:active-view-transition-type(back)::view-transition-new(root) { animation: 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both rst-shell-in-start; }
+  html[dir="rtl"]:active-view-transition-type(forward)::view-transition-old(root) { animation: 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both rst-shell-out-start-rtl; }
+  html[dir="rtl"]:active-view-transition-type(forward)::view-transition-new(root) { animation: 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both rst-shell-in-end-rtl; }
+  html[dir="rtl"]:active-view-transition-type(back)::view-transition-old(root) { animation: 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both rst-shell-out-end-rtl; z-index: 1; }
+  html[dir="rtl"]:active-view-transition-type(back)::view-transition-new(root) { animation: 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both rst-shell-in-start-rtl; }
+  /* The console's bar holds still while the page under it slides. */
+  .rst-shell-console > .rst-shell__bar, [rst-shell-console] > [rst-shell-bar] { view-transition-name: rst-shell-bar; }
+}
+@keyframes rst-shell-in-end { from { transform: translateX(100%); } }
+@keyframes rst-shell-out-start { to { opacity: 0.7; transform: translateX(-25%); } }
+@keyframes rst-shell-in-start { from { opacity: 0.7; transform: translateX(-25%); } }
+@keyframes rst-shell-out-end { to { transform: translateX(100%); } }
+@keyframes rst-shell-in-end-rtl { from { transform: translateX(-100%); } }
+@keyframes rst-shell-out-start-rtl { to { opacity: 0.7; transform: translateX(25%); } }
+@keyframes rst-shell-in-start-rtl { from { opacity: 0.7; transform: translateX(25%); } }
+@keyframes rst-shell-out-end-rtl { to { transform: translateX(-100%); } }
+@media (prefers-reduced-motion: reduce) {
+  html:active-view-transition-type(forward)::view-transition-old(root) { animation: none; }
+  html:active-view-transition-type(forward)::view-transition-new(root) { animation: none; }
+  html:active-view-transition-type(back)::view-transition-old(root) { animation: none; }
+  html:active-view-transition-type(back)::view-transition-new(root) { animation: none; }
+  html[dir="rtl"]:active-view-transition-type(forward)::view-transition-old(root) { animation: none; }
+  html[dir="rtl"]:active-view-transition-type(forward)::view-transition-new(root) { animation: none; }
+  html[dir="rtl"]:active-view-transition-type(back)::view-transition-old(root) { animation: none; }
+  html[dir="rtl"]:active-view-transition-type(back)::view-transition-new(root) { animation: none; }
+}

@@ -1,0 +1,2692 @@
+/* rastrillo/ui — design tokens and the component classes the shipped
+   partials use (see ui_test.go's TestAllPartialsAreDefined for the
+   current, authoritative list — deliberately not counted here, so this
+   comment cannot go stale as the set grows).
+
+   rastrillo new writes this file once into your app's static/ directory.
+   From then on it is yours: edit it, replace it, delete rules you do not
+   want. Nothing regenerates it, and rastrillo.Serve never serves it —
+   your app's own static handler does.
+
+   Every class, attribute and custom property is prefixed rst- — except
+   the single .icon rule, which styles the class rastrillo.Icon emits —
+   so dropping this file into an app with existing CSS has exactly one
+   known collision surface. There are no imports, no remote assets and no webfont:
+   this stylesheet fetches nothing, from anywhere, ever. That is a test,
+   not a wish (ui_test.go, TestTokensCSSIsSelfContained) — which is also
+   why this comment cannot spell those constructs out literally.
+
+   TWO SPELLINGS, ON PURPOSE, FOR ONE RELEASE. Every component rule
+   below names its class and its attribute twin: `.rst-btn, [rst-btn]`,
+   `.rst-btn--primary, [rst-btn~="primary"]`, `.rst-callout__body,
+   [rst-callout-body]`. The attribute spelling is the vocabulary this
+   library is moving to (design spec §6-v3); the class spelling is what
+   every app and every shipped partial writes today. Pairing them here
+   first is what makes the move non-breaking in both directions — this
+   file is written into your static/ once and frozen there, while the
+   partials upgrade with the module, so an app that has not refreshed
+   its copy must keep styling either way.
+
+   The grammar, so a rule you add follows it: the KIND is a bare
+   attribute; a VARIANT is a token in that attribute's value, matched
+   with ~= so `rst-btn="primary compact"` composes the way a class list
+   does; a PART is its own flat attribute (`rst-callout-body`), never a
+   value — the value slot means variant on every attribute or the
+   grammar is unreadable; and rst-tone carries the four tones that
+   data-tone carries today. Both members of a pair weigh exactly the
+   same: a class and an attribute selector are both (0,1,0), so pairing
+   changes no cascade anywhere. ui_test.go's
+   TestEveryClassSelectorHasAnAttributeTwin holds all of that, including
+   the specificity, and the browser drive proves the two spellings
+   compute identical styles.
+
+   Utilities keep the class spelling and are not paired:
+   rst-sr-only, rst-mono, rst-m-hide, rst-grow, rst-nm, rst-danger,
+   rst-cell-mut. They are not kinds — they are cross-cutting styling,
+   which is what class is for, and they stay class after the move.
+
+      Colour, the type family and shape are not here: they live in
+   themes/day.css (or whichever theme was scaffolded), which rastrillo new
+   writes beside this file as static/theme.css. This file is structure —
+   layout, spacing, the type scale, and the component classes, every one
+   of them painted with var(--rst-*). Swap the theme file and the app
+   changes palette, corner and depth; nothing here is touched.
+
+   Radius and shadow used to live in the scale block below. They moved to
+   the themes in v2, because a theme that can only change colour cannot
+   change how an app feels: day is soft (8px/6px, wide low-alpha
+   shadows), plain is nearly square (4px/3px, one hairline layer) and
+   signal is milled (4px/2px, short dense shadows). tokens.css still
+   paints with var(--rst-radius*) and var(--rst-shadow-*) everywhere; it
+   just no longer decides what they are.
+
+   Padding values are load-bearing for SC 2.5.8 Target Size (AA, new in
+   WCAG 2.2): pagination chips measure about 30px, row action pills
+   about 27px, and the button sizes about 28px (sm), 34px (default) and
+   44px (lg) on their smaller axis, all clear of the 24px minimum. Do
+   not shrink them without re-measuring; the button block shows the
+   arithmetic.
+
+   Type sizes are rem, not px, so the whole scale tracks a reader who has
+   raised their browser's default font size. Spacing is rem for the same
+   reason. Anything you add here should follow suit.
+   ──────────────────────────────────────────────────────────────────── */
+
+/* ── Scale: type and spacing. Theme-independent. Radius is not here —
+      it is part of the theme's shape axis; see themes/. ────────────── */
+:root {
+  --rst-fs-lg: 1.0625rem;    /* 17px — the one step above base */
+  --rst-fs-base: 0.875rem;   /* 14px at the browser default */
+  --rst-fs-sm: 0.78125rem;   /* 12.5px */
+  --rst-fs-xs: 0.71875rem;   /* 11.5px */
+
+  --rst-sp-1: 0.25rem;
+  --rst-sp-2: 0.5rem;
+  --rst-sp-3: 0.75rem;
+  --rst-sp-4: 1rem;
+  --rst-sp-5: 1.5rem;
+  --rst-sp-6: 2.5rem;
+
+  /* The tap floor on small or touch screens: 44px at the default root,
+     and it tracks a reader who raised their default size. Declared here
+     so an app's own CSS can use it; only rules inside the touch query
+     below read it, so desktop density never sees it. */
+  --rst-tap: 2.75rem;
+
+  /* The list grid's kebab column. A variable rather than the literal
+     32px the samples used to write, so the column can grow to a 44px
+     kebab on touch screens (the touch block redefines it). An app that
+     keeps a literal 32px still works: the kebab is justify-self: end,
+     so it overflows 12px toward the inline start, into the grid's
+     0.85rem gap, without reaching the cell beside it. */
+  --rst-col-menu: 32px;
+
+  /* The scrollbar's gutter, reserved whether or not there is a
+     scrollbar in it, so a short page and a long one are the same width
+     and clicking between them does not slide the layout sideways.
+
+     A token rather than a class for three reasons: the opt-out is one
+     line in your own stylesheet (--rst-scrollbar-gutter: auto), it
+     layers like every other token, and custom properties are untouched
+     by the markup migration, so this survives it without an edit.
+
+     What it costs, chosen knowingly: a page too short to scroll now
+     reserves the strip as well, so there is a thin empty band at the
+     trailing edge where there was none. That is the price of never
+     shifting. both-edges would double the band to keep centred content
+     exactly centred, and was not taken: this system's pages are already
+     a max-width column inside a wider ground, so the asymmetry does not
+     land where it would be seen.
+
+     Do not over-claim what it fixes. macOS overlay scrollbars take no
+     layout space at all, so on a default Mac there was never anything
+     to shift. This is real on Windows and Linux, on a Mac set to
+     "always show scrollbars", and inside the design gallery's own
+     preview iframes. Chrome 94+, Firefox 97+, Safari 18.2+; an older
+     engine ignores the declaration and lands on the behaviour it has
+     today. */
+  --rst-scrollbar-gutter: stable;
+}
+
+/* ── Small or touch screens: the type scale moves up one step ───────
+   One query decides "a phone, a tablet, or a window too narrow to read
+   at desktop density", and every touch-only rule in this file sits in
+   it. pointer: coarse is the PRIMARY pointer, so a touchscreen laptop
+   driven by its trackpad keeps desktop density; any-pointer would
+   switch a mouse user's whole interface because a touchscreen exists.
+   max-width: 40rem catches a narrow desktop window and the design
+   gallery's 390px Mobile tab, a fine pointer showing what a phone
+   shows (a rem in a media query is the browser's initial size, not the
+   root's). The shells' 800px is a different axis: between 640 and
+   800px under a mouse is a split window, which gets the narrow LAYOUT
+   and keeps mouse DENSITY.
+
+   The four tokens move and nothing else: the root size, the rem
+   spacing and every px geometry stay, and controls grow because their
+   text grows and because the touch block at the end of this file gives
+   them a minimum box. Display sizes (page titles, stat numbers, avatar
+   initials) stay literal on purpose, so a 22px title sits over 16px
+   body text. ─────────────────────────────────────────────────────── */
+@media (pointer: coarse), (max-width: 40rem) {
+  :root {
+    --rst-fs-lg: 1.1875rem;    /* 19px */
+    --rst-fs-base: 1rem;       /* 16px */
+    --rst-fs-sm: 0.875rem;     /* 14px */
+    --rst-fs-xs: 0.8125rem;    /* 13px */
+  }
+}
+
+/* ── Base. Three rules, so a freshly scaffolded app looks finished
+      before it has any CSS of its own. Delete them if your app owns
+      its own base styles. ──────────────────────────────────────────── */
+/* The gutter is declared on the root element, which is where the
+   viewport's scrollbar lives. It also fixes a second instance of the
+   same bug that nobody had attributed to the scrollbar: the modal's
+   scroll lock below (body:has(.rst-backdrop) { overflow: hidden })
+   takes the scrollbar away the instant a modal opens, and without a
+   reserved gutter the whole page slides sideways while the reader
+   watches. One declaration, both cases. */
+html {
+  scrollbar-gutter: var(--rst-scrollbar-gutter);
+}
+
+body {
+  margin: 0;
+  background: var(--rst-bg);
+  color: var(--rst-text);
+  font-family: var(--rst-font);
+  font-size: var(--rst-fs-base);
+  line-height: 1.5;
+}
+
+/* The content column every screen sits in. Your page markup emits this;
+   no partial does. 64rem, widened from 52rem after the v2 page went
+   live: 52rem is a reading measure, and this column holds list grids
+   and side-by-side form fields, which a reading measure squeezes. */
+.rst-page, [rst-page] {
+  box-sizing: border-box;
+  margin: 0 auto;
+  max-width: 64rem;
+  padding: var(--rst-sp-5) var(--rst-sp-4) var(--rst-sp-6);
+}
+
+/* rastrillo.Icon emits class="icon" with no width or height, so the icon
+   sizes from here and tracks the text beside it. */
+.icon {
+  block-size: 1em;
+  flex: none;
+  inline-size: 1em;
+}
+
+/* Focus is visible everywhere inside the app column (.rst-page) and
+   inside any component rendered outside one. :where() contributes no
+   specificity, so any rule below can override it. */
+:where(.rst-page, .rst-page-header, .rst-list, .rst-lbar, .rst-search, .rst-empty, .rst-pagination) :focus-visible, :where([rst-page], [rst-page-header], [rst-list], [rst-lbar], [rst-search], [rst-empty], [rst-pagination]) :focus-visible {
+  outline: 2px solid var(--rst-accent);
+  outline-offset: 2px;
+}
+
+
+/* ── Buttons: page-header's primary action, empty-state's CTA. ────── */
+/* border-box because rst-btn goes on <a> as often as on <button>, and
+   only <button> is border-box by the browser's own stylesheet: a block
+   link-button's width: 100% came out its padding and border wider than
+   its column, and poked past the sign-in card on a phone. */
+.rst-btn, [rst-btn] {
+  align-items: center;
+  background: var(--rst-surface);
+  border: 1px solid var(--rst-line-strong);
+  border-radius: var(--rst-radius-sm);
+  box-sizing: border-box;
+  color: var(--rst-text);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: inherit;
+  font-size: var(--rst-fs-sm);
+  font-weight: 600;
+  gap: var(--rst-sp-2);
+  line-height: 1.4;
+  padding: 0.45rem 0.75rem;
+  text-decoration: none;
+}
+.rst-btn:hover, [rst-btn]:hover {
+  border-color: var(--rst-accent);
+  color: var(--rst-accent);
+}
+.rst-btn--primary, [rst-btn~="primary"] {
+  background: var(--rst-accent);
+  border-color: var(--rst-accent);
+  color: var(--rst-on-accent);
+}
+.rst-btn--primary:hover, [rst-btn~="primary"]:hover {
+  background: var(--rst-accent-strong);
+  border-color: var(--rst-accent-strong);
+  color: var(--rst-on-accent);
+}
+
+/* ghost — a quiet Cancel beside a primary/danger action: no fill, a
+   muted label, and it darkens toward the ordinary text colour on hover
+   rather than picking up the accent (the accent means "this navigates
+   somewhere new"; a ghost Cancel does not). */
+.rst-btn--ghost, [rst-btn~="ghost"] {
+  background: transparent;
+  color: var(--rst-text-muted);
+}
+.rst-btn--ghost:hover, [rst-btn~="ghost"]:hover {
+  border-color: var(--rst-line-strong);
+  color: var(--rst-text);
+}
+
+/* danger — a solid fill for a destructive submit (confirm-form,
+   bulk-bar's actions menu). --rst-tone-negative-fg already clears
+   4.5:1 as a filled background against --rst-on-accent's label colour
+   in both themes, so no new custom properties are needed — computed
+   with the same WCAG relative-luminance formula as each theme file's
+   own contrast table (day's values, shown; every theme's own pair is
+   gated the same way, in both schemes):
+     light  --rst-on-accent (#ffffff) on --rst-tone-negative-fg (#b91c1c)   6.47:1
+     dark   --rst-on-accent (#0b1220) on --rst-tone-negative-fg (#f79aa0)   8.99:1
+   Hover darkens via filter rather than a themed "negative-strong"
+   token: brightness() scales every channel of the already-themed fill
+   (and, being a post-paint filter, the label too), so one rule works
+   in both themes without a new pair of colours to maintain. Re-checked
+   with the label included in the scaled result, both still clear
+   4.5:1 by a wide margin (day's values again; a post-paint filter
+   result, so these two rows are illustrative rather than gated):
+     light  0.9× fill (#a61919) vs 0.9× label (#e6e6e6)   6.06:1
+     dark   0.9× fill (#de8a90) vs 0.9× label (#0a101c)   7.38:1
+   background/border-color/color are restated on :hover, matching
+   .rst-btn--primary:hover's pattern exactly — .rst-btn:hover (same
+   0,2,0 specificity, an earlier rule) sets border-color/color to the
+   accent, and a filter-only :hover rule wins nothing for properties it
+   never declares, so without this restatement the label silently
+   cascades to accent-on-red (~1.05:1) at the exact moment a user
+   commits to a destructive action. */
+.rst-btn--danger, [rst-btn~="danger"] {
+  background: var(--rst-tone-negative-fg);
+  border-color: var(--rst-tone-negative-fg);
+  color: var(--rst-on-accent);
+}
+.rst-btn--danger:hover, [rst-btn~="danger"]:hover {
+  background: var(--rst-tone-negative-fg);
+  border-color: var(--rst-tone-negative-fg);
+  color: var(--rst-on-accent);
+  filter: brightness(0.9);
+}
+
+/* ── Button sizes ─────────────────────────────────────────────────────
+   Three steps, and they are a size scale rather than a set of variants:
+   size composes with primary/ghost/danger, so `rst-btn="primary lg"` is
+   the ordinary spelling of a form's submit.
+
+   The default step is the one the page-header action and the row pill
+   want — small, dense, a control beside other controls. It was the ONLY
+   step for a long time, and that is how a form's submit ended up
+   wearing it: a 34px, 12.5px-labelled button stretched across a 44rem
+   column, which reads as a skinny bar rather than the thing the whole
+   screen is asking you to press. A CTA is not a toolbar button; give it
+   `lg`.
+
+   Measured on the smaller axis, against SC 2.5.8's 24px floor — padding
+   both sides, plus the label's line box, plus the 1px border top and
+   bottom (the border is why the default step is 34px and not 32px). The
+   header comment carries these too; keep the two in step:
+     sm       0.3rem  × 2 +  11.5px × 1.4 + 2  =  9.6 + 16.1 + 2  ≈ 28px
+     default  0.45rem × 2 +  12.5px × 1.4 + 2  = 14.4 + 17.5 + 2  ≈ 34px
+     lg       0.7rem  × 2 +  14px   × 1.4 + 2  = 22.4 + 19.6 + 2  ≈ 44px
+   sm is the tightest thing in the file that is still a button. It is
+   for a dense row of them, not for making an ordinary button smaller,
+   and there is deliberately nothing below it. */
+.rst-btn--sm, [rst-btn~="sm"] {
+  font-size: var(--rst-fs-xs);
+  padding: 0.3rem 0.55rem;
+}
+.rst-btn--lg, [rst-btn~="lg"] {
+  font-size: var(--rst-fs-base);
+  padding: 0.7rem 1.15rem;
+}
+
+/* block — a button that fills its container, for the one-action form
+   (sign in, sign up, a confirm page) where the submit IS the screen.
+   It centres its own label: .rst-btn sets no justify-content, so a
+   stretched button's text sits at the row's flex-start and reads as a
+   mistake rather than a choice.
+
+   Pair it with lg. A block button at the default size is precisely the
+   skinny bar described above — the width comes from the container and
+   the height does not follow, so the ratio goes wrong in proportion to
+   how wide the column is. Nothing here enforces that pairing, because a
+   narrow container is a legitimate place for a block button at the
+   default size; the wide ones are where it fails. */
+.rst-btn--block, [rst-btn~="block"] {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+/* The UA's [hidden] { display: none } loses to the display this file
+   gives every button, so a button marked hidden would show anyway. The
+   sign-in screen's passkey door ships hidden and is revealed only where
+   a ceremony can work; without this it would show everywhere. */
+.rst-btn[hidden], [rst-btn][hidden] { display: none; }
+
+/* busy — the loading state rastrillo.js gives every submit button on
+   its way out, and the one state of a button that is not a variant:
+   any .rst-btn can wear it. The spinner is a real child element
+   (.rst-spin, further down) rather than a pseudo-element, because the
+   shim adds and removes it; .rst-btn's own `gap` spaces it from the
+   label, so there is no margin here to keep in step with the padding.
+   :disabled arrives a tick later, once the submission is under way —
+   the two are styled together so the button does not change twice.
+   Nothing here animates, so prefers-reduced-motion has nothing to say
+   to it: .rst-spin already stops rotating under that query. */
+.rst-btn[aria-busy="true"], [rst-btn][aria-busy="true"], .rst-btn:disabled, [rst-btn]:disabled {
+  cursor: default;
+}
+/* Dimmed, but not much. A disabled control is "incidental" under WCAG
+   1.4.3 and exempt from the contrast minimum, and this one is disabled
+   for a second — so the dimming is a hint that the button is not
+   listening, not a licence to make the label hard to read while
+   someone is waiting on it. */
+.rst-btn:disabled, [rst-btn]:disabled {
+  opacity: 0.8;
+}
+/* The ring must not be squeezed by a long label, and must not stretch
+   with the button's align-items: center default.
+
+   Placed by shape rather than by a name of its own: the busy spinner is
+   the shim's rst-spin child of an rst-btn, and there is nothing else it
+   could be. rst-btn__spin was the second name for one thing, and the
+   grammar of §6-v3 is explicit that a part is styled structurally where
+   structure says it. The shim now writes one attribute. */
+.rst-btn > .rst-spin, [rst-btn] > [rst-spin] {
+  align-self: center;
+  flex: none;
+}
+/* With no busy label there are no words to show while it works, so the
+   spinner takes the label's place instead of joining it: joining widens
+   the button mid-click and shoves whatever sits beside it. The shim
+   marks a button that HAS a busy label with data-idle-label, which is
+   what the :not() keys on — those words were asked for, so they stay.
+
+   :has(> spinner) because aria-busy is ordinary ARIA an app may set on
+   its own fetch button with no shim and no spinner; keyed on aria-busy
+   alone, that button would lose its label and show nothing at all.
+
+   The label is unpainted, never removed: aria-busy plus the untouched
+   text is what a screen reader announces. -webkit-text-fill-color
+   rather than color, because the ring is drawn in currentColor — a
+   transparent color would take the spinner with it. Element children
+   (an icon) are not reached by the text fill and take opacity 0, which
+   unlike visibility keeps them in the accessibility tree.
+
+   The media query stands the swap down for two readers a lone ring
+   fails. Under reduced motion the ring is still and dimmed, and on its
+   own reads as a stray "C". Under forced colours the engine repaints
+   the text fill, so the label paints anyway and a centred ring would
+   land on top of it. Both keep the older spinner-beside-label look. */
+@media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
+  .rst-btn[aria-busy="true"]:not([data-idle-label]):has(> .rst-spin), [rst-btn][aria-busy="true"]:not([data-idle-label]):has(> [rst-spin]) {
+    -webkit-text-fill-color: transparent;
+  }
+  .rst-btn[aria-busy="true"]:not([data-idle-label]):has(> .rst-spin) > :not(.rst-spin), [rst-btn][aria-busy="true"]:not([data-idle-label]):has(> [rst-spin]) > :not([rst-spin]) {
+    opacity: 0;
+  }
+  .rst-btn[aria-busy="true"]:not([data-idle-label]) > .rst-spin, [rst-btn][aria-busy="true"]:not([data-idle-label]) > [rst-spin] {
+    inset: 0;
+    margin: auto;
+    position: absolute;
+  }
+  /* The spinner's containing block. Zero specificity, so an app's own
+     position: fixed or sticky on a floating Save still wins — either
+     of those contains the spinner just as well, and losing it would
+     drop the button back into the page flow mid-click. */
+  :where(.rst-btn[aria-busy="true"]:not([data-idle-label])), :where([rst-btn][aria-busy="true"]:not([data-idle-label])) {
+    position: relative;
+  }
+}
+
+/* ── page-header ──────────────────────────────────────────────────── */
+.rst-page-header, [rst-page-header] {
+  align-items: baseline;
+  border-bottom: 1px solid var(--rst-header-rule);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rst-sp-3);
+  justify-content: space-between;
+  margin: 0 0 var(--rst-sp-5);
+  padding-bottom: var(--rst-sp-3);
+  position: relative;
+}
+/* The rake line is retired (design doc §6-v2.2). It drew a 2.5rem
+   accent stroke over this rule, flush to the inline start — the
+   library's one flourish, and, built from the same parts in the same
+   order, indistinguishable from a determinate progress bar at 12%. The
+   rule itself carries the theme now: --rst-header-rule is derived from
+   the theme's accent and line, so plain draws grey, day draws a barely
+   tinted hairline and signal a visibly tinted one, and an app that
+   wants its own sets one custom property instead of fighting an
+   ::after it cannot remove.
+
+   The declaration stays, rather than the rule being deleted, because a
+   stylesheet that merely stops mentioning the stroke says nothing to
+   the next reader; this says the stroke is gone on purpose. It also
+   neutralises a vendored theme or app sheet that still carries the old
+   flourish at a lower specificity.
+
+   THE RULE IS DECORATIVE AND CARRIES NO CONTRAST FLOOR. The heading's
+   size, weight and spacing carry the structure; the rule does not. It
+   is deliberately absent from ui/contrast_test.go's pair table, and a
+   later pass must not argue it up to 1.4.11's 3:1 — that floor was
+   never its. See ui/contrast_test.go's colorMixSkip comment.
+
+   position: relative stays: it is the containing block anything an app
+   absolutely positions inside its own header expects to find, and
+   removing it would move those elements rather than tidy the file. */
+.rst-page-header::after, [rst-page-header]::after {
+  content: none;
+}
+.rst-page-header__titles, [rst-page-header-titles] {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+.rst-page-header h1, [rst-page-header] h1 {
+  color: var(--rst-text);
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  margin: 0;
+}
+.rst-page-header__sub, [rst-page-header-sub] {
+  color: var(--rst-text-muted);
+  font-size: var(--rst-fs-sm);
+  margin: var(--rst-sp-1) 0 0;
+  max-inline-size: 44rem;
+}
+
+/* ── The list card, its toolbar, and its search field ─────────────── */
+/* No padding here, on purpose: a list card holds rows, and each row pads
+   itself. A form, prose or a strip of links does NOT go in here — it
+   goes in .rst-box, the padded section card. Text touching the border
+   is the sign that content landed in the wrong card. */
+.rst-list, [rst-list] {
+  background: var(--rst-surface);
+  border: 1px solid var(--rst-line);
+  border-radius: var(--rst-radius);
+}
+
+/* Why there is no `overflow: hidden` here, since the obvious way to
+   clip rows to a rounded card is exactly that, and it IS what this rule
+   used to be.
+   A card that clips is a clipping context for everything absolutely
+   positioned inside it — so a bulk bar's Actions menu, or a row kebab's
+   panel, was sliced off at the card's edge the moment it opened. That
+   is any card holding a menu, not one instance of it, so the fix is
+   here rather than at the bulk bar.
+   `overflow: clip` is the same trap: it clips too. `overflow-clip-margin`
+   would push the clip box outward, but it pushes it outward on every
+   side and past the border radius — which is the corner clipping this
+   whole rule exists to do. So the card stops clipping and the rows round
+   THEMSELVES: the first full-bleed child takes the card's start corners,
+   the last takes its end corners, one step in for the 1px border. A
+   card's own rows (.rst-row, .rst-lrow, .rst-lbar, .rst-bulkbar) declare
+   no radius, which is what makes them full-bleed in the first place.
+
+   Both selectors are wrapped in :where() to weigh NOTHING — (0,0,0),
+   not the (0,2,0) a bare `.rst-list > :first-child` would carry. That is
+   the whole mechanism by which a child that owns its own shape keeps it:
+   a bare <form rst-search> or a .rst-empty as the direct first
+   or last child of a card declares its radius at (0,1,0) and therefore
+   wins, and so does any app class doing the same. Source order does NOT
+   decide this and cannot be relied on to — an earlier draft of this
+   comment said it did, and both those children painted lopsided corners
+   (7px over 6px in day) because (0,2,0) beat (0,1,0) whatever the order.
+   :where() rather than a :not(.rst-search, .rst-empty) exception list
+   because the list would need extending for every self-shaped child an
+   app or a later partial invents, and the thing being expressed is not
+   "except these two" but "unless the child says otherwise".
+   TestSelfShapedChildrenKeepTheirCornersInsideACard gates the
+   relationship, by measuring the same child inside a card and outside
+   one and requiring the two to agree.
+
+   KNOWN EDGE, not handled: :last-child is a DOM position, and the old
+   `overflow: hidden` clipped whatever was PAINTED last. So a trailing
+   <input type="hidden"> — which apps write constantly, and which has
+   display: none from the UA — takes the rounding and leaves the real
+   last row square. No template in the framework does this, so nothing
+   regressed; it is unhandled rather than overlooked because the CSS that
+   would handle it has to enumerate what "invisible" means in a selector
+   (:nth-last-child(1 of :not([type=hidden]):not([hidden]))), and the
+   commonest case of all — display: none from the app's own stylesheet —
+   is not expressible in a selector at all. A rule that covered two of
+   the three would read as covering all three. If you are looking at a
+   square corner on a rounded card, look for a hidden last child. */
+:where(.rst-list) > :where(:first-child),
+:where([rst-list]) > :where(:first-child),
+:where(.rst-card) > :where(:first-child),
+:where([rst-card]) > :where(:first-child) {
+  border-start-end-radius: calc(var(--rst-radius) - 1px);
+  border-start-start-radius: calc(var(--rst-radius) - 1px);
+}
+:where(.rst-list) > :where(:last-child),
+:where([rst-list]) > :where(:last-child),
+:where(.rst-card) > :where(:last-child),
+:where([rst-card]) > :where(:last-child) {
+  border-end-end-radius: calc(var(--rst-radius) - 1px);
+  border-end-start-radius: calc(var(--rst-radius) - 1px);
+}
+
+/* list-bar: the toolbar strip. The search field is capped at 20rem so
+   the space to its right stays reserved — that is where the filter and
+   sort controls attach when the dropdown slice lands. */
+.rst-lbar, [rst-lbar] {
+  align-items: center;
+  background: var(--rst-surface-2);
+  border-bottom: 1px solid var(--rst-line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rst-sp-3);
+  padding: var(--rst-sp-2) var(--rst-sp-3);
+}
+/* list-bar-search wraps its form in <search>, the landmark element, so
+   the strip's flex child is the <search>, not the form. Both are sized
+   here: an app that hand-writes a bare <form rst-search> into
+   its own .rst-lbar keeps the layout it had before the element landed. */
+.rst-lbar > search,
+[rst-lbar] > search,
+.rst-lbar > .rst-search,
+[rst-lbar] > [rst-search] {
+  flex: 0 1 20rem;
+}
+
+/* list-bar-search renders this form, which is the field box itself. Used
+   on its own inside a .rst-list card it just needs margin; inside a
+   .rst-lbar the strip supplies the padding. The <search> around it is a
+   plain block box — it draws nothing, so the form remains the field. */
+.rst-search, [rst-search] {
+  align-items: center;
+  background: var(--rst-surface);
+  border: 1px solid var(--rst-line-strong);
+  border-radius: var(--rst-radius-sm);
+  display: flex;
+  gap: var(--rst-sp-2);
+  margin: 0;
+  padding: 0.3rem 0.55rem;
+}
+.rst-list > search,
+[rst-list] > search,
+.rst-list > .rst-search,
+[rst-list] > [rst-search] {
+  margin: var(--rst-sp-3);
+}
+.rst-search .icon, [rst-search] .icon {
+  color: var(--rst-text-faint);
+}
+.rst-search input[type="search"], [rst-search] input[type="search"] {
+  background: transparent;
+  border: 0;
+  color: var(--rst-text);
+  flex: 1;
+  font-family: inherit;
+  font-size: var(--rst-fs-sm);
+  min-inline-size: 0;
+  padding: 0.2rem 0;
+}
+/* The zoom floor for the search input. Mobile Safari zooms a page that
+   focuses a text control under 16px, and this input is set to
+   --rst-fs-sm, which is 14px even after the touch step: this is the one
+   floor that fires inside the rastrillo idioms. It sits directly after
+   the rule above because at equal weight the later rule wins; see the
+   input floor below for the rest of the reasoning. */
+@media (pointer: coarse), (max-width: 40rem) {
+  .rst-search input[type="search"], [rst-search] input[type="search"] { font-size: max(1rem, 1em); }
+}
+.rst-search input[type="search"]::placeholder, [rst-search] input[type="search"]::placeholder {
+  color: var(--rst-text-faint);
+}
+/* The field box carries the focus indicator for the whole control, so
+   the input's own default outline would only double it up. */
+.rst-search input[type="search"]:focus-visible, [rst-search] input[type="search"]:focus-visible {
+  outline: none;
+}
+.rst-search:focus-within, [rst-search]:focus-within {
+  border-color: var(--rst-accent);
+  outline: 2px solid var(--rst-accent);
+  outline-offset: 1px;
+}
+/* The browser's own ✕ goes (design spec §6-v2.1b.6). It is
+   ::-webkit-search-cancel-button and it does exactly what it is
+   specified to do — it clears the input's VALUE — but a GET form
+   submits on submit, so the results stand and the address bar still
+   says ?q=. list-bar-search renders a real link in its place, and
+   leaving both would be two affordances, one of which lies.
+   -webkit-appearance is not redundant beside display: none: without it
+   WebKit reserves the button's box before the display ever applies. */
+.rst-search input[type="search"]::-webkit-search-cancel-button, [rst-search] input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+/* The link that replaces it. 24px on BOTH axes is WCAG 2.2 SC 2.5.8
+   Target Size (AA), which this library gates in CI — an ✕ tucked inside
+   a field is exactly the shape that fails it, and a 17px chip on this
+   branch already did. Do not shrink it without re-measuring. */
+.rst-search__clear, [rst-search-clear] {
+  align-items: center;
+  border-radius: var(--rst-radius-sm);
+  color: var(--rst-text-faint);
+  display: inline-flex;
+  flex: none;
+  justify-content: center;
+  min-block-size: 24px;
+  min-inline-size: 24px;
+  text-decoration: none;
+}
+.rst-search__clear:hover, [rst-search-clear]:hover {
+  background: var(--rst-accent-soft);
+  color: var(--rst-text);
+}
+
+/* ── list-row-action ──────────────────────────────────────────────── */
+.rst-row, [rst-row] {
+  align-items: center;
+  border-top: 1px solid var(--rst-line);
+  display: flex;
+  gap: var(--rst-sp-3);
+  padding: var(--rst-sp-3);
+  position: relative;
+}
+.rst-row:first-child, [rst-row]:first-child {
+  border-top: 0;
+}
+/* The toolbar strip already draws the line under itself. */
+.rst-lbar + .rst-row, [rst-lbar] + [rst-row] {
+  border-top: 0;
+}
+/* Only a row that is a link looks like one: the fill follows the
+   primary link, so a hand-written row with nothing to open stays flat. */
+.rst-row:has(> .rst-row__main > a):hover, [rst-row]:has(> [rst-row-main] > a):hover {
+  background: var(--rst-surface-2);
+}
+.rst-row__lead, [rst-row-lead] {
+  align-items: center;
+  background: var(--rst-tone-neutral-bg);
+  block-size: 1.9rem;
+  border-radius: 50%;
+  color: var(--rst-tone-neutral-fg);
+  display: flex;
+  flex: none;
+  font-size: var(--rst-fs-xs);
+  font-weight: 600;
+  inline-size: 1.9rem;
+  justify-content: center;
+}
+.rst-row__lead[data-lead="positive"], [rst-row-lead][data-lead="positive"] {
+  background: var(--rst-tone-positive-bg);
+  color: var(--rst-tone-positive-fg);
+}
+.rst-row__lead[data-lead="warning"], [rst-row-lead][data-lead="warning"] {
+  background: var(--rst-tone-warning-bg);
+  color: var(--rst-tone-warning-fg);
+}
+.rst-row__lead[data-lead="negative"], [rst-row-lead][data-lead="negative"] {
+  background: var(--rst-tone-negative-bg);
+  color: var(--rst-tone-negative-fg);
+}
+.rst-row__lead[data-lead="accent"], [rst-row-lead][data-lead="accent"] {
+  background: var(--rst-accent-soft);
+  color: var(--rst-accent);
+}
+.rst-row__main, [rst-row-main] {
+  flex: 1;
+  min-inline-size: 0;
+}
+/* A row with a destination has ONE primary link, and its ::after covers
+   the row, so the row is the target on every screen: the
+   cursor, the status-bar URL, middle-click and "open in new tab" all
+   work across the whole width. Everything else in the row that can be
+   operated is lifted above the overlay by the :where() rule under the
+   list grid. The row is not a link, it contains one, so nested anchors
+   stay impossible. */
+.rst-row__main > a, [rst-row-main] > a {
+  color: var(--rst-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+.rst-row__main > a::after, [rst-row-main] > a::after {
+  content: "";
+  inset: 0;
+  position: absolute;
+}
+/* Focus draws the ring on the overlay, inset 2px so a card's corner
+   cannot cut it, so a keyboard user sees the whole row outlined. The
+   link also underlines: a check that reads the focused element and its
+   ancestors (the gallery's keyboard walk) never sees a pseudo-element,
+   and forced-colors mode keeps text decoration. */
+.rst-row__main > a:focus-visible, [rst-row-main] > a:focus-visible, .rst-lrow > a.rst-nm:focus-visible, [rst-lrow] > a.rst-nm:focus-visible, .rst-lrow > a.rst-person:focus-visible, [rst-lrow] > a[rst-person]:focus-visible { outline: none; text-decoration: underline; }
+.rst-row__main > a:focus-visible::after, [rst-row-main] > a:focus-visible::after, .rst-lrow > a.rst-nm:focus-visible::after, [rst-lrow] > a.rst-nm:focus-visible::after, .rst-lrow > a.rst-person:focus-visible::after, [rst-lrow] > a[rst-person]:focus-visible::after { border-radius: var(--rst-radius-sm); outline: 2px solid var(--rst-accent); outline-offset: -2px; }
+.rst-row__main > a:hover, [rst-row-main] > a:hover {
+  text-decoration: underline;
+}
+.rst-row__sub, [rst-row-sub] {
+  color: var(--rst-text-muted);
+  display: block;
+  font-size: var(--rst-fs-sm);
+  margin-block-start: 0.1rem;
+}
+.rst-row__action, [rst-row-action] {
+  background: var(--rst-surface);
+  border: 1px solid var(--rst-line-strong);
+  border-radius: var(--rst-radius-pill);
+  color: var(--rst-text-muted);
+  flex: none;
+  font-size: var(--rst-fs-sm);
+  padding: 0.2rem 0.7rem;
+  position: relative;
+  text-decoration: none;
+  z-index: 1;
+}
+.rst-row__action:hover, [rst-row-action]:hover {
+  border-color: var(--rst-accent);
+  color: var(--rst-accent);
+}
+
+/* A status pill inside a row is part of the row's target, not a
+   control: a dead spot inside a row you can tap is a mis-tap on a
+   phone. It is not lifted, so a tap on it opens the row. */
+.rst-row .rst-status, [rst-row] [rst-status] {
+  flex: none;
+}
+
+/* ── status-pill. The dot is decoration; the label is the state. ──── */
+.rst-status, [rst-status] {
+  align-items: center;
+  background: var(--rst-tone-neutral-bg);
+  border-radius: var(--rst-radius-pill);
+  color: var(--rst-tone-neutral-fg);
+  display: inline-flex;
+  font-size: var(--rst-fs-xs);
+  font-weight: 600;
+  gap: 0.35rem;
+  line-height: 1.6;
+  padding: 0.15rem 0.55rem;
+}
+.rst-status::before, [rst-status]::before {
+  background: currentColor;
+  block-size: 0.375rem;
+  border-radius: 50%;
+  content: "";
+  flex: none;
+  inline-size: 0.375rem;
+}
+.rst-status[data-tone="positive"], [rst-status][rst-tone~="positive"] {
+  background: var(--rst-tone-positive-bg);
+  color: var(--rst-tone-positive-fg);
+}
+.rst-status[data-tone="warning"], [rst-status][rst-tone~="warning"] {
+  background: var(--rst-tone-warning-bg);
+  color: var(--rst-tone-warning-fg);
+}
+.rst-status[data-tone="negative"], [rst-status][rst-tone~="negative"] {
+  background: var(--rst-tone-negative-bg);
+  color: var(--rst-tone-negative-fg);
+}
+
+/* ── empty-state ──────────────────────────────────────────────────── */
+.rst-empty, [rst-empty] {
+  background: var(--rst-surface);
+  border: 1px dashed var(--rst-line-strong);
+  border-radius: var(--rst-radius);
+  padding: var(--rst-sp-6) var(--rst-sp-4);
+  text-align: center;
+}
+/* Class-based, so it styles the partial's <h2> without inheriting any
+   <h2> default: an empty state's heading is a real heading in the
+   document outline, not a paragraph dressed up as one. */
+.rst-empty__title, [rst-empty-title] {
+  color: var(--rst-text);
+  font-size: var(--rst-fs-lg);
+  font-weight: 600;
+  margin: 0 0 var(--rst-sp-2);
+}
+.rst-empty__body, [rst-empty-body] {
+  color: var(--rst-text-muted);
+  margin: 0 auto;
+  max-inline-size: 34rem;
+}
+.rst-empty__cta, [rst-empty-cta] {
+  margin: var(--rst-sp-4) 0 0;
+}
+
+/* ── pagination. The current page is a filled chip AND aria-current AND
+      bolder — three signals, so it never rests on colour alone. ────── */
+.rst-pagination, [rst-pagination] {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+  gap: var(--rst-sp-1);
+  margin: var(--rst-sp-4) 0;
+}
+.rst-pagination a,
+[rst-pagination] a,
+.rst-pagination span,
+[rst-pagination] span {
+  border: 1px solid var(--rst-line);
+  border-radius: var(--rst-radius-sm);
+  color: var(--rst-text-muted);
+  display: inline-block;
+  font-size: var(--rst-fs-sm);
+  min-inline-size: 2rem;
+  padding: 0.3rem 0.6rem;
+  text-align: center;
+  text-decoration: none;
+}
+.rst-pagination a:hover, [rst-pagination] a:hover {
+  background: var(--rst-accent-soft);
+  border-color: var(--rst-accent);
+  color: var(--rst-text);
+}
+.rst-pagination [aria-current="page"], [rst-pagination] [aria-current="page"] {
+  background: var(--rst-accent);
+  border-color: var(--rst-accent);
+  color: var(--rst-on-accent);
+  font-weight: 600;
+}
+.rst-pagination .rst-pagination__disabled, [rst-pagination] [rst-pagination-disabled] {
+  border-style: dashed;
+  color: var(--rst-text-faint);
+}
+.rst-pagination .rst-pagination__gap, [rst-pagination] [rst-pagination-gap] {
+  border-color: transparent;
+  min-inline-size: 0;
+  padding-inline: var(--rst-sp-1);
+}
+
+/* badge — uppercase bordered chip; tones reuse the pill tone pairs. */
+.rst-badge, [rst-badge] {
+  border: 1px solid var(--rst-line);
+  border-radius: var(--rst-radius-sm);
+  color: var(--rst-text-muted);
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.05rem 0.4rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.rst-badge--positive, [rst-badge~="positive"] { background: var(--rst-tone-positive-bg); border-color: var(--rst-tone-positive-fg); color: var(--rst-tone-positive-fg); }
+.rst-badge--warning, [rst-badge~="warning"] { background: var(--rst-tone-warning-bg); border-color: var(--rst-tone-warning-fg); color: var(--rst-tone-warning-fg); }
+.rst-badge--negative, [rst-badge~="negative"] { background: var(--rst-tone-negative-bg); border-color: var(--rst-tone-negative-fg); color: var(--rst-tone-negative-fg); }
+.rst-badge--neutral, [rst-badge~="neutral"] { background: var(--rst-tone-neutral-bg); border-color: var(--rst-tone-neutral-fg); color: var(--rst-tone-neutral-fg); }
+
+/* meter — 4px capacity bar; the number rides beside it as text.
+
+   The bar is a native <meter> (spec §6-v2.4), and styling one is the
+   one place in this file where the same declaration has to be written
+   three times: once on the element, once for the WebKit/Blink
+   pseudo-elements, once for the Firefox one. They cannot share a rule.
+   A selector list containing a pseudo-element an engine does not know
+   is invalid AS A WHOLE in that engine, so ::-webkit-meter-bar and
+   ::-moz-meter-bar in one comma-separated rule would style nothing
+   anywhere. That is why the repetition below is not tidied up.
+
+   The two engines also disagree about which pseudo-element is which.
+   In WebKit/Blink ::-webkit-meter-bar is the TRACK and
+   ::-webkit-meter-optimum-value is the FILL; in Firefox the element
+   itself is the track and ::-moz-meter-bar is the FILL. Read the three
+   blocks with that in mind or they look contradictory.
+
+   HONESTLY FLAGGED: the -moz- rule is unverified. This project's
+   browser drive is Chromium, so the WebKit/Blink path below is measured
+   and the Firefox path is written from the spec and reasoned about. It
+   was shipped that way knowingly (Paul's call). If a Firefox drive ever
+   lands, this is the first rule to point it at.
+
+   The old markup was a <span> with an <i> in it sized by
+   --rst-meter-fill. That custom property is gone; an app that set it is
+   setting nothing now, which is why it is called out in the changelog
+   rather than only here. */
+.rst-meter, [rst-meter] { align-items: center; color: var(--rst-text-muted); display: inline-flex; font-size: var(--rst-fs-xs); gap: var(--rst-sp-2); }
+.rst-meter__bar, [rst-meter-bar] { appearance: none; background: var(--rst-accent-soft); block-size: 4px; border: 0; border-radius: 2px; flex: 1; min-inline-size: 34px; }
+.rst-meter__bar::-webkit-meter-inner-element, [rst-meter-bar]::-webkit-meter-inner-element { block-size: 100%; }
+.rst-meter__bar::-webkit-meter-bar, [rst-meter-bar]::-webkit-meter-bar { background: var(--rst-accent-soft); block-size: 100%; border: 0; border-radius: 2px; }
+.rst-meter__bar::-webkit-meter-optimum-value, [rst-meter-bar]::-webkit-meter-optimum-value { background: var(--rst-accent); border-radius: 2px; }
+.rst-meter__bar::-moz-meter-bar, [rst-meter-bar]::-moz-meter-bar { background: var(--rst-accent); border-radius: 2px; }
+.rst-meter__num, [rst-meter-num] { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* stats — the instrument strip a dashboard or a report opens with: a
+   lead reading at headline size, companion readings beside it, divided
+   by hairlines inside one card.
+
+   One band, one cell, one lead variant. The headline stat and the
+   counts next to it are the same component at two sizes (spec
+   §6-v2.4), so there is no second kind to keep in step with this one.
+
+   flex-wrap and a flex-basis rather than a grid with a column count.
+   Any number of cells has to work — three on one dashboard, five on
+   the next — and a grid would need the caller to say how many. The
+   basis is what decides when the strip becomes two rows, and the lead
+   cell's is larger so it keeps the line to itself when the others
+   wrap under it.
+
+   The hairline is border-inline-start on every cell but the first,
+   which is what makes the strip read as ONE instrument rather than as
+   a row of cards. Logical, so it lands on the right in Arabic. A
+   wrapped cell keeps its line, and that is the one visual compromise
+   here: at two rows the first cell of the second row draws a leading
+   hairline against the card's edge. It is a hairline, and the
+   alternative — :nth-child arithmetic against a column count nobody
+   declared — is the grid this deliberately is not. */
+.rst-stats, [rst-stats] {
+  background: var(--rst-surface);
+  border: 1px solid var(--rst-line);
+  border-radius: var(--rst-radius);
+  display: flex;
+  flex-wrap: wrap;
+}
+.rst-stat, [rst-stat] {
+  border-inline-start: 1px solid var(--rst-line);
+  display: flex;
+  flex: 1 1 9rem;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-inline-size: 0;
+  padding: var(--rst-sp-4);
+}
+.rst-stat:first-child, [rst-stat]:first-child {
+  border-inline-start: 0;
+}
+.rst-stat--lead, [rst-stat~="lead"] {
+  flex-basis: 14rem;
+}
+/* The eyebrow. Uppercase and tracked, the same grammar every label in
+   this system uses above a value, so a band of cells reads as one row
+   of labels rather than as four headings. */
+.rst-stat__label, [rst-stat-label] {
+  color: var(--rst-text-muted);
+  font-size: var(--rst-fs-xs);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+/* tabular-nums so a column of readings lines up on its digits, and so
+   a number that changes on a poll does not jitter its neighbours. */
+.rst-stat__num, [rst-stat-num] {
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  line-height: 1.1;
+}
+.rst-stat--lead .rst-stat__num, [rst-stat~="lead"] [rst-stat-num] {
+  font-size: 2.1rem;
+}
+/* The delta is TEXT in a colour, not a colour. Its sign is written by
+   the caller and is the signal a reader who cannot tell the two hues
+   apart is reading; the colour is the second one (WCAG 2.2 AA 1.4.1).
+   Both hues are held at 4.5:1 against this card by the contrast gate
+   in the same commit that added them — they are text, so the floor
+   applies whether or not the colour carries meaning of its own. */
+.rst-stat__delta, [rst-stat-delta] {
+  font-size: var(--rst-fs-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.rst-stat__delta[data-tone="positive"], [rst-stat-delta][rst-tone~="positive"] {
+  color: var(--rst-tone-positive-fg);
+}
+.rst-stat__delta[data-tone="negative"], [rst-stat-delta][rst-tone~="negative"] {
+  color: var(--rst-tone-negative-fg);
+}
+.rst-stat__delta[data-tone="neutral"], [rst-stat-delta][rst-tone~="neutral"] {
+  color: var(--rst-text-muted);
+}
+.rst-stat__note, [rst-stat-note] {
+  color: var(--rst-text-faint);
+  font-size: var(--rst-fs-xs);
+}
+
+/* person — avatar + name + email; avatar is decoration, text is identity. */
+.rst-person, [rst-person] { align-items: center; color: inherit; display: inline-flex; gap: 0.7rem; min-width: 0; text-decoration: none; }
+.rst-person__av, [rst-person-av] { align-items: center; background: var(--rst-accent); border-radius: 50%; color: var(--rst-on-accent); display: flex; flex: none; font-size: 0.6875rem; font-weight: 600; height: 28px; justify-content: center; width: 28px; }
+.rst-person__av--empty, [rst-person-av~="empty"] { background: transparent; border: 1px dashed var(--rst-line-strong); color: transparent; }
+.rst-person__meta, [rst-person-meta] { min-width: 0; }
+.rst-person__name, [rst-person-name] { display: block; font-weight: 550; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rst-person__email, [rst-person-email] { color: var(--rst-text-muted); display: block; font-size: var(--rst-fs-xs); line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rst-person:hover .rst-person__name, [rst-person]:hover [rst-person-name] { color: var(--rst-accent); }
+.rst-person--lg .rst-person__av, [rst-person~="lg"] [rst-person-av] { font-size: 1.0625rem; height: 46px; width: 46px; }
+
+/* callout — the one alert vocabulary; icon sized to the first text line. */
+.rst-callout, [rst-callout] { align-items: flex-start; background: var(--rst-surface-2); border: 1px solid var(--rst-line-strong); border-radius: var(--rst-radius); display: flex; gap: 0.6rem; margin: var(--rst-sp-4) 0; padding: 0.85rem 1rem; }
+.rst-callout__ic, [rst-callout-ic] { align-items: center; color: var(--rst-accent); display: inline-flex; flex: none; height: 1.5rem; justify-content: center; width: 1.25rem; }
+.rst-callout__ic svg, [rst-callout-ic] svg, .rst-callout__ic .icon, [rst-callout-ic] .icon { display: block; height: 1.25rem; width: 1.25rem; }
+.rst-callout__body, [rst-callout-body] { line-height: 1.5; min-width: 0; }
+.rst-callout__body > strong, [rst-callout-body] > strong { display: block; font-weight: 600; }
+.rst-callout__body > p, [rst-callout-body] > p { color: var(--rst-text-muted); margin: 0.15rem 0 0; }
+.rst-callout__body > p:only-child, [rst-callout-body] > p:only-child { color: inherit; margin: 0; }
+.rst-callout__body > ul, [rst-callout-body] > ul { color: var(--rst-text-muted); margin: 0.15rem 0 0; padding-inline-start: 1.1rem; }
+.rst-callout[data-tone="positive"], [rst-callout][rst-tone~="positive"] { background: var(--rst-tone-positive-bg); border-color: var(--rst-tone-positive-fg); }
+.rst-callout[data-tone="positive"] > .rst-callout__ic, [rst-callout][rst-tone~="positive"] > [rst-callout-ic] { color: var(--rst-tone-positive-fg); }
+.rst-callout[data-tone="warning"], [rst-callout][rst-tone~="warning"] { background: var(--rst-tone-warning-bg); border-color: var(--rst-tone-warning-fg); }
+.rst-callout[data-tone="warning"] > .rst-callout__ic, [rst-callout][rst-tone~="warning"] > [rst-callout-ic] { color: var(--rst-tone-warning-fg); }
+.rst-callout[data-tone="negative"], [rst-callout][rst-tone~="negative"] { background: var(--rst-tone-negative-bg); border-color: var(--rst-tone-negative-fg); }
+.rst-callout[data-tone="negative"] > .rst-callout__ic, [rst-callout][rst-tone~="negative"] > [rst-callout-ic] { color: var(--rst-tone-negative-fg); }
+
+/* detail-list — a record's labelled facts as a definition list; the
+   partial emits .rst-detail, .rst-mono marking machine-ish values. */
+.rst-detail, [rst-detail] { display: grid; gap: var(--rst-sp-2) var(--rst-sp-5); grid-template-columns: max-content 1fr; margin: var(--rst-sp-4) 0; }
+.rst-detail dt, [rst-detail] dt { color: var(--rst-text-muted); font-size: var(--rst-fs-sm); font-weight: 600; }
+.rst-detail dd, [rst-detail] dd { margin: 0; }
+.rst-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: var(--rst-fs-sm); }
+
+/* ── Narrow screens ───────────────────────────────────────────────── */
+@media (max-width: 34rem) {
+  .rst-lbar > search,
+  [rst-lbar] > search,
+  .rst-lbar > .rst-search,
+  [rst-lbar] > [rst-search] {
+    flex: 1 1 100%;
+  }
+  .rst-row, [rst-row] {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .rst-page-header h1, [rst-page-header] h1 {
+    font-size: 1.25rem;
+  }
+}
+
+/* ── The structural idioms: box, list grid, row-menu, dropdown, ftok ── */
+
+/* box — the section card. Its heading (rst-box-head) is a SIBLING
+   before the box, never inside it: a screen is a stack of
+   section-header + card. A box-head action is a compact real button,
+   never a pill. */
+.rst-box, [rst-box] { background: var(--rst-surface); border: 1px solid var(--rst-line); border-radius: var(--rst-radius); margin: var(--rst-sp-4) 0; padding: 1.1rem 1.25rem; }
+.rst-box > :first-child, [rst-box] > :first-child { margin-top: 0; }
+.rst-box > :last-child, [rst-box] > :last-child { margin-bottom: 0; }
+.rst-box-head, [rst-box-head] { align-items: baseline; display: flex; gap: var(--rst-sp-4); justify-content: space-between; margin: 1.5rem 0 0.5rem; }
+.rst-box-head:first-child, [rst-box-head]:first-child { margin-top: 0; }
+.rst-box-head + .rst-box, [rst-box-head] + [rst-box] { margin-top: 0; }
+.rst-box-head h2, [rst-box-head] h2 { font-size: var(--rst-fs-base); margin: 0; }
+.rst-box-foot, [rst-box-foot] { border-top: 1px solid var(--rst-line); color: var(--rst-text-muted); margin-top: var(--rst-sp-4); padding-top: 0.75rem; }
+.rst-box > .rst-detail, [rst-box] > [rst-detail] { margin: 0; }
+
+/* The list grid — the real data-table vocabulary. The card sets the
+   columns once (--rst-cols, from a class in the app's stylesheet —
+   the default CSP blocks inline styles — trailing
+   var(--rst-col-menu) for the kebab); rows only choose cells. Hover
+   fill only on rows that contain the identity link — a display-only
+   row must never look clickable.
+   Like .rst-list, .rst-card has no padding: rows only. Anything that
+   is not a row belongs in .rst-box. */
+.rst-card, [rst-card] { background: var(--rst-surface); border: 1px solid var(--rst-line); border-radius: var(--rst-radius); }
+.rst-lrow, [rst-lrow] { align-items: center; border-bottom: 1px solid var(--rst-line); display: grid; gap: 0.85rem; grid-template-columns: var(--rst-cols, 1fr); padding: 0.68rem 1rem; position: relative; }
+.rst-lrow:last-child, [rst-lrow]:last-child { border-bottom: 0; }
+.rst-lrow--head, [rst-lrow~="head"] { color: var(--rst-text-faint); font-size: var(--rst-fs-xs); font-weight: 550; letter-spacing: 0.05em; padding: 0.55rem 1rem; text-transform: uppercase; }
+.rst-lrow:not(.rst-lrow--head):has(> a.rst-nm, > a.rst-person):hover, [rst-lrow]:not([rst-lrow~="head"]):has(> a.rst-nm, > a[rst-person]):hover { background: var(--rst-accent-soft); }
+/* The list grid's primary link is its identity cell: the rst-nm link,
+   or a person link when a person is who the row is. Its ::after covers
+   the row, as list-row-action's does. One identity cell per row: with
+   both, the later overlay wins and the earlier link is unreachable. */
+.rst-lrow > a.rst-nm::after, [rst-lrow] > a.rst-nm::after, .rst-lrow > a.rst-person::after, [rst-lrow] > a[rst-person]::after { content: ""; inset: 0; position: absolute; }
+.rst-nm { border-radius: var(--rst-radius-sm); color: inherit; font-weight: 550; min-width: 0; text-align: start; text-decoration: none; }
+a.rst-nm:hover { color: var(--rst-accent); }
+.rst-nm small { color: var(--rst-text-muted); display: block; font-size: var(--rst-fs-xs); font-weight: 400; }
+.rst-cell-mut { color: var(--rst-text-muted); font-size: var(--rst-fs-xs); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rst-no-match, [rst-no-match] { color: var(--rst-text-muted); font-size: var(--rst-fs-sm); padding: 1.6rem 1rem; text-align: center; }
+.rst-no-match a, [rst-no-match] a { color: var(--rst-accent); }
+.rst-count-line, [rst-count-line] { color: var(--rst-text-faint); font-size: var(--rst-fs-xs); margin: 0.7rem 0 0; }
+/* Controls above the overlay. A positioned overlay paints above every
+   element that is not positioned, whatever the DOM order, so without
+   this a checkbox before the name link would be covered and a tap on it
+   would open the item.
+
+   It lifts the CONTROLS, never their containers: lifting a row menu's
+   <details> would make it a stacking context and trap its open panel
+   under the next row's lifted controls. The :not() is attached to the
+   :is() with no space, so it filters the controls themselves; with a
+   space it is a descendant combinator and lifts things inside them.
+   The primary link is excluded, or its ::after would measure against
+   the link instead of the row.
+
+   The whole selector is inside :where(), so it weighs nothing: its job
+   is to give an otherwise static control a position and a z-index, and
+   never to replace a position a component chose. The switch's input,
+   the date field's pick button and select.js's hidden native select are
+   all absolutely placed, and at zero weight their own rules win
+   position while z-index still applies; at any weight they would be
+   pulled back into flow, out of the boxes they were drawn for.
+
+   Each lifted control is a stacking context at z-index 1, so a popup
+   it draws itself (a tooltip's [rst-tip]::after) paints under the next
+   row's lifted controls. Do not put such a control in a row without
+   raising it. */
+:where(:is(.rst-row, .rst-lrow) :is(a[href], button, summary, label, input, select, textarea):not(.rst-row__main > a, .rst-lrow > a.rst-nm, .rst-lrow > a.rst-person)), :where(:is([rst-row], [rst-lrow]) :is(a[href], button, summary, label, input, select, textarea):not([rst-row-main] > a, [rst-lrow] > a.rst-nm, [rst-lrow] > a[rst-person])) { position: relative; z-index: 1; }
+@media (max-width: 800px) {
+  .rst-m-hide { display: none; }
+  .rst-lrow, [rst-lrow], .rst-lrow--head, [rst-lrow~="head"] { grid-template-columns: minmax(0, 1fr) auto var(--rst-col-menu); }
+}
+
+/* row-menu — the per-row kebab: native details/summary, no JS. The
+   destructive item sits last, class rst-danger, label ending "…". */
+.rst-row-menu, [rst-row-menu] { justify-self: end; position: relative; }
+.rst-row-menu > summary, [rst-row-menu] > summary { align-items: center; border-radius: var(--rst-radius-sm); color: var(--rst-text-faint); cursor: pointer; display: flex; height: 26px; justify-content: center; list-style: none; width: 26px; }
+.rst-row-menu > summary::-webkit-details-marker, [rst-row-menu] > summary::-webkit-details-marker { display: none; }
+.rst-row-menu > summary:hover, [rst-row-menu] > summary:hover, .rst-row-menu[open] > summary, [rst-row-menu][open] > summary { background: var(--rst-accent-soft); color: var(--rst-text); }
+.rst-row-menu__panel, [rst-row-menu-panel] { background: var(--rst-surface); border: 1px solid var(--rst-line); border-radius: 9px; box-shadow: var(--rst-shadow-pop); inset-inline-end: 0; min-width: 176px; padding: 0.25rem; position: absolute; top: calc(100% + 4px); z-index: 40; }
+.rst-row-menu__panel a, [rst-row-menu-panel] a, .rst-row-menu__panel button, [rst-row-menu-panel] button { background: none; border: 0; border-radius: var(--rst-radius-sm); color: var(--rst-text); cursor: pointer; display: block; font: inherit; font-size: var(--rst-fs-sm); font-weight: 450; margin: 0; padding: 0.4rem 0.65rem; text-align: start; text-decoration: none; width: 100%; }
+.rst-row-menu__panel a:hover, [rst-row-menu-panel] a:hover, .rst-row-menu__panel button:hover, [rst-row-menu-panel] button:hover { background: var(--rst-accent-soft); }
+/* The separator every menu surface draws. Scoped to the row menu alone
+   until the live page showed the topbar account menu wearing the UA's
+   thick inset 3D <hr> instead: that panel is a .rst-dropdown__menu, and
+   nothing named it. The three panels are one surface with three entry
+   points, so one rule names all three — .rst-locale redundantly, since
+   its panel carries .rst-dropdown__menu too, but a locale menu built
+   without that class is still a menu and still needs the hairline. */
+.rst-row-menu__panel hr,
+[rst-row-menu-panel] hr,
+.rst-dropdown__menu hr,
+[rst-dropdown-menu] hr,
+.rst-locale hr,
+[rst-locale] hr { border: 0; border-top: 1px solid var(--rst-line); margin: 0.25rem 0; }
+.rst-danger { color: var(--rst-tone-negative-fg); }
+.rst-row-menu__panel .rst-danger:hover, [rst-row-menu-panel] .rst-danger:hover { background: var(--rst-tone-negative-bg); }
+/* A POST item is a one-button form: no margin, so it lines up with a
+   link item. busy.js puts a spinner in front of a submit button's label,
+   and a menu item is not an [rst-btn], so the spinner sits BESIDE the
+   label; this reserves its slot at the inline end whether or not the
+   item is busy, so a long translated label can never widen the panel or
+   wrap mid-submit. The cost is 1.5rem of padding on POST items. */
+.rst-row-menu__panel form, [rst-row-menu-panel] form { margin: 0; }
+.rst-row-menu__panel button, [rst-row-menu-panel] button { padding-inline-end: calc(0.65rem + 1rem + var(--rst-sp-2)); position: relative; }
+.rst-row-menu__panel button > .rst-spin, [rst-row-menu-panel] button > [rst-spin] { inset-block: 0; inset-inline-end: 0.65rem; margin-block: auto; position: absolute; }
+
+/* dropdown — the details/summary menu vocabulary (header overflow,
+   list-bar Filter/Sort). Exclusivity between siblings is the native
+   details name attribute — zero JS. */
+.rst-dropdown, [rst-dropdown] { position: relative; }
+.rst-dropdown > summary, [rst-dropdown] > summary { align-items: center; color: var(--rst-text-muted); cursor: pointer; display: flex; gap: 0.3rem; list-style: none; padding: 0.4rem 0.6rem; white-space: nowrap; }
+.rst-dropdown > summary::-webkit-details-marker, [rst-dropdown] > summary::-webkit-details-marker { display: none; }
+.rst-dropdown > summary:hover, [rst-dropdown] > summary:hover, .rst-dropdown[open] > summary, [rst-dropdown][open] > summary { color: var(--rst-text); }
+.rst-dropdown__menu, [rst-dropdown-menu] { background: var(--rst-surface); border: 1px solid var(--rst-line); border-radius: 9px; box-shadow: var(--rst-shadow-pop); inset-inline-end: 0; margin-top: 4px; min-width: 176px; padding: 0.25rem; position: absolute; top: 100%; z-index: 30; }
+.rst-dropdown__menu a, [rst-dropdown-menu] a { border-radius: var(--rst-radius-sm); color: inherit; display: block; font-size: var(--rst-fs-sm); padding: 0.4rem 0.65rem; text-decoration: none; }
+.rst-dropdown__menu a:hover, [rst-dropdown-menu] a:hover, .rst-dropdown__menu a[aria-current], [rst-dropdown-menu] a[aria-current] { background: var(--rst-accent-soft); }
+/* locale-menu — the language switcher is a dropdown whose items are
+   one-field POST forms (spec §2.4), so the button inside each form
+   takes the menu-link styling. Autonyms keep their own script, so no
+   text-transform here, ever. */
+.rst-locale form, [rst-locale] form { margin: 0; }
+.rst-locale button, [rst-locale] button { background: none; border: 0; border-radius: var(--rst-radius-sm); color: var(--rst-text); cursor: pointer; display: block; font: inherit; font-size: var(--rst-fs-sm); padding: 0.4rem 0.65rem; text-align: start; width: 100%; }
+.rst-locale button:hover, [rst-locale] button:hover { background: var(--rst-accent-soft); }
+.rst-locale button[aria-current], [rst-locale] button[aria-current] { color: var(--rst-accent); font-weight: 600; }
+/* Task 2's menu only ever held links; bulk-bar's actions menu (Task 4)
+   is real submit buttons on the surrounding form, so the same panel
+   needs button styling too — mirrors .rst-row-menu__panel's combined
+   a/button rule above. */
+.rst-dropdown__menu button, [rst-dropdown-menu] button { background: none; border: 0; border-radius: var(--rst-radius-sm); color: inherit; cursor: pointer; display: block; font: inherit; font-size: var(--rst-fs-sm); margin: 0; padding: 0.4rem 0.65rem; text-align: start; width: 100%; }
+.rst-dropdown__menu button:hover, [rst-dropdown-menu] button:hover { background: var(--rst-accent-soft); }
+/* The same content-box bug the inputs had, in the three menu panels:
+   a full-width button inside a 0.25rem-padded panel measured 100% of
+   the content box and then added its own 0.65rem of side padding, so
+   every hover highlight bled ~20.8px past the panel's rounded edge.
+   One rule for all three panels, because it is one cause. */
+.rst-row-menu__panel a, [rst-row-menu-panel] a, .rst-row-menu__panel button, [rst-row-menu-panel] button, .rst-locale button, [rst-locale] button, .rst-dropdown__menu button, [rst-dropdown-menu] button { box-sizing: border-box; }
+.rst-dropdown__menu .rst-danger:hover, [rst-dropdown-menu] .rst-danger:hover { background: var(--rst-tone-negative-bg); }
+.rst-dropdown__menu .rst-menu-group > summary, [rst-dropdown-menu] [rst-menu-group] > summary { color: var(--rst-text-muted); cursor: pointer; font-size: var(--rst-fs-sm); list-style: none; padding: 0.4rem 0.65rem; }
+.rst-dropdown__menu .rst-menu-group > summary::-webkit-details-marker, [rst-dropdown-menu] [rst-menu-group] > summary::-webkit-details-marker { display: none; }
+.rst-dropdown__menu .rst-menu-group > div, [rst-dropdown-menu] [rst-menu-group] > div { padding-inline-start: 0.6rem; }
+/* Menus that fit the viewport (design spec §6-v2.1b, 1 and 2). Two
+   bugs, one surface — and one rule for all four panels, because
+   .rst-combo__list and .rst-dtp__list have carried the cap and the
+   scroll since they were written and these two never did.
+
+   THE CAP AND THE SCROLL come first because they work in every engine.
+   The twelve-locale language menu measures 388px; on a short viewport
+   its last entries were simply unreachable — no cap, no scroll, nothing
+   to drag. The cap is the space a menu may take: 20rem where the window
+   is tall, and the window itself less the room the anchor and the
+   page's own chrome need where it is not. overscroll-behavior keeps a
+   flick that bottoms the menu out from carrying on into the page behind
+   it.
+
+   THE 8rem FLOOR IS NOT DECORATION, and it went in after the first
+   version of this rule shipped without one. dvh is the viewport, and
+   inside an iframe the viewport is THE FRAME — so in the design
+   gallery's own 100px preview frames `100dvh - 6rem` computed to 4px
+   and a three-item menu rendered as a 12px sliver; below a 96px frame
+   it computed to zero and the menu was invisible. A fix aimed at menu
+   entries nobody could reach had shipped a menu with no entries at all.
+   The floor is the honest trade: in a frame too short for the menu it
+   overflows, and an overflowing menu can be scrolled to, where an
+   invisible one cannot be anything. Any app embedding a screen in a
+   short iframe had the same bug, so this is not a gallery fix.
+
+   THE FLIP is CSS anchor positioning. A menu with no room below opens
+   upward; one against the trailing edge opens the other way inline.
+   Zero script.
+
+   It is Chromium-only today. That is accepted, and the reason is
+   recorded here rather than left looking like an oversight: an engine
+   without it lands on the fixed position above, which is exactly what
+   every engine does today, so nothing regresses — and Firefox and
+   Safari gain the behaviour with no release from us. The alternative
+   was script, which would put positioning behind JavaScript and make
+   the scriptless path worse than the one we already ship. That trade is
+   the wrong way round for this library.
+
+   anchor-scope is load-bearing, not decoration. anchor-name is a
+   document-wide name, so without a scope every menu on the page would
+   resolve --rst-menu to the LAST element carrying it and all of them
+   would pile onto one anchor. Scoping the name to each disclosure's own
+   subtree is what lets one name serve every menu in the library.
+
+   Inside the @supports the fixed insets have to go. position-area
+   supplies the containing block, so a leftover top: 100% would then be
+   measured against THAT box and push the panel a whole anchor-height
+   further down again. The margin stays: position-try-fallbacks flips
+   margins along with insets, so one margin-block-start is the 4px gap
+   in both directions.
+
+   The cap is deliberately NOT a percentage of the position-area. A
+   percentage would be the exact space available, which sounds better
+   and is worse: an element clamped to fit never overflows, and overflow
+   is precisely what triggers position-try-fallbacks, so the menu would
+   scroll in place at the foot of the window instead of flipping up into
+   the room above it.
+
+   position-visibility covers the fixed positioning above. A fixed panel
+   is deliberately outside every scrolling ancestor's clip — that is how
+   a menu opened inside a card escapes it — but the anchor is NOT, so a
+   rail's nav scrolled until the menu's own button is gone could leave
+   the menu painted over unrelated content with nothing under it.
+   anchors-visible ties the panel's visibility to its anchor's: when the
+   button goes, the menu goes.
+
+   It is a no-op in Chromium today, and that is written down rather than
+   left to be rediscovered: Chromium's INITIAL value for the property is
+   already anchors-visible, on every element. The CSS spec's initial
+   value is `always`. So this declaration is not what produces today's
+   behaviour — it is what keeps it if an engine ever aligns with the
+   spec, which would otherwise orphan every menu here with no warning at
+   all. ui's TestAMenuDoesNotOutliveTheAnchorScrolledAwayFromUnderIt
+   watches for exactly that, and says the same at more length. */
+.rst-dropdown__menu,
+[rst-dropdown-menu],
+.rst-row-menu__panel,
+[rst-row-menu-panel] {
+  max-block-size: min(20rem, max(calc(100dvh - 6rem), 8rem));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+@supports (position-area: block-end) and (position-try-fallbacks: flip-block) {
+  .rst-dropdown,
+  [rst-dropdown],
+  .rst-row-menu,
+  [rst-row-menu] {
+    anchor-name: --rst-menu;
+    anchor-scope: --rst-menu;
+  }
+  .rst-dropdown__menu,
+  [rst-dropdown-menu],
+  .rst-row-menu__panel,
+  [rst-row-menu-panel] {
+    inset: auto;
+    margin-block-start: 4px;
+    position: fixed;
+    position-anchor: --rst-menu;
+    position-area: block-end span-inline-start;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+    position-visibility: anchors-visible;
+  }
+}
+
+.rst-caret, [rst-caret] { align-items: center; color: var(--rst-text-faint); display: inline-flex; font-size: 0.8em; transition: transform 0.15s; }
+.rst-caret svg, [rst-caret] svg, .rst-caret .icon, [rst-caret] .icon { display: block; height: 1em; width: 1em; }
+details[open] > summary > .rst-caret, details[open] > summary > [rst-caret] { transform: rotate(180deg); }
+
+/* ftok — an applied filter as a removable chip; the × is a plain link
+   to the unfiltered URL, so removing a filter is just navigation.
+   The × is 24px square because WCAG 2.2 AA 2.5.8 says a target is, and
+   it was 17px until the accessibility gate measured it. The chip lost
+   its block padding in the same breath to pay for most of that: the
+   chip measures 26.0px tall now against 22.4px before, and would have
+   been 29.2px if the padding had stayed. */
+.rst-ftok, [rst-ftok] { align-items: center; background: var(--rst-surface); border: 1px solid var(--rst-line-strong); border-radius: 7px; display: inline-flex; font-size: var(--rst-fs-xs); gap: 0.45rem; padding-block: 0; padding-inline: 0.6rem 0.2rem; }
+.rst-ftok .rst-ftok__k, [rst-ftok] [rst-ftok-k] { color: var(--rst-text-muted); }
+.rst-ftok a, [rst-ftok] a { align-items: center; border-radius: 4px; color: var(--rst-text-faint); display: inline-flex; height: 24px; justify-content: center; text-decoration: none; width: 24px; }
+.rst-ftok a:hover, [rst-ftok] a:hover { background: var(--rst-tone-negative-bg); color: var(--rst-tone-negative-fg); }
+
+/* Reduced motion: the caret's rotate transition is the only new
+   animation this batch adds. Everything else here (hover fills, colour
+   changes) is not a "large motion" trigger under 2.3.3, so it does not
+   need a rule here too. */
+@media (prefers-reduced-motion: reduce) {
+  .rst-caret, [rst-caret] { transition: none; }
+}
+
+/* ── The form family: field, switch, choice cards, seg-tabs, layout ── */
+
+/* fields — bare on the page, one column; a card in a form is reserved
+   for collections, toggle blocks, and choice cards. */
+.rst-field, [rst-field] { margin: var(--rst-sp-4) 0; }
+.rst-field__label, [rst-field-label] { color: var(--rst-text-muted); display: block; font-size: var(--rst-fs-sm); margin: 0 0 0.2rem; }
+.rst-field__hint, [rst-field-hint] { color: var(--rst-text-faint); font-weight: 400; }
+/* box-sizing is set here rather than in a `*` reset, because this file
+   promises exactly one collision surface with an app's own CSS: the
+   rst- prefix. Without it width:100% is the CONTENT box, so an input
+   overflowed its own wrapper by its padding and borders — 21px for a
+   plain field, 47px once .rst-dtp__input reserves room for the picker
+   button. That overflow was three of this batch's visible bugs at once:
+   an input running under the field beside it in a row, an input running
+   out of its card, and a picker button anchored to the wrapper landing
+   47px short of the input's visible end. */
+.rst-input, [rst-input] { background: var(--rst-surface); border: 1px solid var(--rst-line-strong); border-radius: var(--rst-radius-sm); box-sizing: border-box; color: inherit; font: inherit; padding: 0.45rem 0.6rem; width: 100%; }
+/* The zoom floor for the input, and why it is HERE. `font: inherit` in
+   the rule above resets font-size, so a floor placed before it would be
+   reset with it; the primary rule below sizes the field on purpose, so
+   the floor must come before that or it wins the tie and pulls a 19px
+   field down to 16. max(1rem, 1em) lifts a field whose parent is small
+   (a bulk bar, a menu panel) to 16px; 1em in font-size is the PARENT's
+   size, which is exactly why it cannot also keep a large field large —
+   the bug the old single floor had. A :where() spelling was rejected: at
+   zero weight it loses to `font: inherit` above and switches itself off.
+   ui/sizing_test.go holds all three floors to their positions. */
+@media (pointer: coarse), (max-width: 40rem) {
+  .rst-input, [rst-input] { font-size: max(1rem, 1em); }
+}
+.rst-input:focus-visible, [rst-input]:focus-visible { outline: 2px solid var(--rst-accent); outline-offset: 2px; }
+/* short is compact, not tiny: 8rem is a border-box width, so it renders
+   within a pixel or two of the old 6.5rem content box plus its padding,
+   and it is wide enough for the postcodes and codes it is for. The
+   max keeps it from overflowing a column narrower than itself. */
+.rst-input--short, [rst-input~="short"] { inline-size: 8rem; max-inline-size: 100%; }
+/* primary is the form's headline field — the title or name the record is
+   known by — and the size is the whole signal, because the label above it
+   stays the same quiet line every other field gets. font-size has to be
+   restated rather than inherited: .rst-input sets `font: inherit`, so the
+   shorthand would otherwise reset it back to the body's 14px. 550 is the
+   weight .rst-nm and .rst-person__name already give a name; 600 reads as a
+   heading, which this is not. The padding grows with the type so the box
+   keeps its proportions instead of looking like a squeezed plain input.
+   17px is also where iOS Safari stops zooming a focused input, which the
+   14px base does not clear — a real bonus, not the reason. */
+.rst-input--primary, [rst-input~="primary"] { font-size: var(--rst-fs-lg); font-weight: 550; padding: 0.6rem 0.7rem; }
+textarea.rst-input, textarea[rst-input] { min-height: 5rem; resize: vertical; }
+/* field-text/field-textarea (the interim pair the manifest generator
+   emits) mark a required label with * and put the textarea on its own
+   class; styled here so both field families render finished. */
+.rst-field__required, [rst-field-required] { color: var(--rst-tone-negative-fg); }
+.rst-textarea, [rst-textarea] { background: var(--rst-surface); border: 1px solid var(--rst-line-strong); border-radius: var(--rst-radius-sm); box-sizing: border-box; color: inherit; font: inherit; line-height: 1.6; min-height: 5rem; padding: 0.45rem 0.6rem; resize: vertical; width: 100%; }
+/* The textarea's zoom floor, directly after the rule whose `font:
+   inherit` would reset it: a floor above that line is dead, undone by
+   the reset. Reasoning as for the input floor above. */
+@media (pointer: coarse), (max-width: 40rem) {
+  .rst-textarea, [rst-textarea] { font-size: max(1rem, 1em); }
+}
+.rst-textarea:focus-visible, [rst-textarea]:focus-visible { outline: 2px solid var(--rst-accent); outline-offset: 2px; }
+/* The three message lines under a control. display:block is load-bearing
+   rather than cosmetic: the field partial emits them as <p>, and the
+   field-text/date/time/select family as <small>, and an inline <small>
+   silently drops the top margin — so the same message sat at two
+   different distances from its control depending on which partial drew
+   it. The hint's class is shared with the inline parenthetical inside a
+   label in the field partial, so only the <small> form is blocked out. */
+.rst-field__help, [rst-field-help] { color: var(--rst-text-muted); display: block; font-size: var(--rst-fs-xs); margin: 0.45rem 0 0; }
+.rst-field__error, [rst-field-error] { color: var(--rst-tone-negative-fg); display: block; font-size: var(--rst-fs-xs); margin: 0.45rem 0 0; }
+small.rst-field__hint, small[rst-field-hint] { display: block; font-size: var(--rst-fs-xs); margin: 0.45rem 0 0; }
+
+/* switch — the one toggle mechanism: real checkbox, visible track. The
+   knob's left: 2px is deliberately physical, not inset-inline-start: it
+   is the origin of a physical translateX, so the pair has to travel the
+   same axis in either writing mode or the knob leaves the track. What
+   that gives up: the knob therefore always travels left-to-right, so a
+   mirrored switch would need a direction-scoped rule of its own. */
+.rst-switch, [rst-switch] { align-items: center; cursor: pointer; display: inline-flex; gap: 0.6rem; position: relative; }
+.rst-switch input, [rst-switch] input { height: 1px; opacity: 0; position: absolute; width: 1px; }
+.rst-switch__track, [rst-switch-track] { background: var(--rst-line-strong); border-radius: 10px; flex: none; height: 19px; position: relative; transition: background 0.15s; width: 34px; }
+.rst-switch__track::after, [rst-switch-track]::after { background: var(--rst-surface); border-radius: 50%; box-shadow: var(--rst-shadow-knob); content: ""; height: 15px; left: 2px; position: absolute; top: 2px; transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1); width: 15px; }
+.rst-switch:has(input:checked) .rst-switch__track, [rst-switch]:has(input:checked) [rst-switch-track] { background: var(--rst-accent); }
+.rst-switch:has(input:checked) .rst-switch__track::after, [rst-switch]:has(input:checked) [rst-switch-track]::after { transform: translateX(15px); }
+.rst-switch:has(input:focus-visible) .rst-switch__track, [rst-switch]:has(input:focus-visible) [rst-switch-track] { outline: 2px solid var(--rst-accent); outline-offset: 2px; }
+.rst-switch:has(input:disabled), [rst-switch]:has(input:disabled) { cursor: default; opacity: 0.55; }
+
+/* choice cards — whole-card target, native input visible. */
+.rst-choice, [rst-choice] { border: 0; margin: var(--rst-sp-4) 0; padding: 0; }
+.rst-choice > legend, [rst-choice] > legend { font-size: var(--rst-fs-sm); font-weight: 600; margin: 0 0 0.45rem; padding: 0; }
+.rst-choice__cards, [rst-choice-cards] { display: grid; gap: 0.5rem; }
+.rst-choice__cards label, [rst-choice-cards] label { align-items: flex-start; border: 1px solid var(--rst-line); border-radius: var(--rst-radius); cursor: pointer; display: flex; gap: 0.7rem; margin: 0; padding: 0.75rem 0.95rem; }
+.rst-choice__cards label:hover, [rst-choice-cards] label:hover { border-color: var(--rst-accent); }
+.rst-choice__cards input, [rst-choice-cards] input { accent-color: var(--rst-accent); flex: none; margin-top: 0.18rem; }
+.rst-choice__title, [rst-choice-title] { display: block; font-size: var(--rst-fs-sm); font-weight: 550; line-height: 1.35; }
+.rst-choice__desc, [rst-choice-desc] { color: var(--rst-text-muted); display: block; font-size: var(--rst-fs-xs); line-height: 1.4; }
+.rst-choice__cards label:has(input:checked), [rst-choice-cards] label:has(input:checked) { background: var(--rst-accent-soft); border-color: var(--rst-accent); }
+.rst-choice__cards label:has(input:focus-visible), [rst-choice-cards] label:has(input:focus-visible) { outline: 2px solid var(--rst-accent); outline-offset: 2px; }
+
+/* seg-tabs — filled pill inside a soft track; current is aria-current.
+   It wraps: width: max-content is what a segmented control wants and
+   max-inline-size: 100% is what WCAG 2.2 AA 1.4.10 requires, because
+   four tabs are 345px wide and a reflow viewport is 320. Two rows beats
+   a sideways scrollbar on the whole page. */
+.rst-seg-tabs, [rst-seg-tabs] { background: var(--rst-accent-soft); border-radius: 8px; display: flex; flex-wrap: wrap; gap: 2px; max-inline-size: 100%; padding: 2px; width: max-content; }
+.rst-seg-tabs a, [rst-seg-tabs] a { border-radius: var(--rst-radius-sm); color: var(--rst-text-muted); font-size: var(--rst-fs-sm); font-weight: 550; padding: 5px 16px; text-decoration: none; }
+.rst-seg-tabs a:hover, [rst-seg-tabs] a:hover { color: var(--rst-text); }
+.rst-seg-tabs a[aria-current], [rst-seg-tabs] a[aria-current] { background: var(--rst-surface); box-shadow: var(--rst-shadow-lift); color: var(--rst-text); font-weight: 600; }
+
+/* form layout — the interview rhythm and the save bar. */
+.rst-form-flow > .rst-field + .rst-field, [rst-form-flow] > [rst-field] + [rst-field] { margin-top: var(--rst-sp-5); }
+/* field-row aligns by the CONTROL row, not by the bottom of the box.
+   align-items:end was the bug: a field carrying an error is taller than
+   its sibling, so bottom-aligning it lifted its input clear of the row
+   and dropped its error line across the field beside it.
+
+   Judged against grid-with-subgrid, which does align label/control/
+   message tracks across siblings exactly: subgrid needs the row to be a
+   grid, and a grid cannot express what this row is for. grid-auto-flow:
+   column never wraps, so a narrow screen overflows instead of stacking;
+   and grid-auto-columns is one value for every column, so rst-grow — a
+   wide field beside a short one — cannot be said at all. Flex keeps
+   both. What align-items:start gives up is a row whose fields have
+   label boxes of different heights; the ::before below buys back the
+   common case of that (a field with no label at all), and a label long
+   enough to wrap is a field that wants its own row.
+
+   The message then flows under its own column and shifts no sibling,
+   which is the second half of the fix — it needs the border-box on
+   .rst-input above to hold, or the control overflows the column the
+   message is measured against. */
+.rst-field-row, [rst-field-row] { align-items: start; display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 0.75rem 0; }
+.rst-field-row .rst-field, [rst-field-row] [rst-field] { margin: 0; }
+.rst-field-row > .rst-field, [rst-field-row] > [rst-field] { flex: 0 1 auto; min-inline-size: 8rem; }
+.rst-field-row > .rst-grow, [rst-field-row] > .rst-grow { flex: 1 1 12rem; }
+/* A field in a row with no label reserves the label's line anyway, so
+   its control still lines up with a labelled sibling's. It measures
+   that line rather than restating it: the same font-size .rst-field__label
+   declares, one lh of the line-height both of them inherit, and the
+   label's own bottom margin.
+
+   The two block-size declarations are one value with a fallback, not a
+   duplicate: an engine that has :has() but not the lh unit drops the
+   second line and keeps the calc. That window is real — :has() shipped
+   in Chrome 105 and Safari 15.4, lh in Chrome 109 and Safari 16.4 — so
+   Chrome 105-108 and Safari 15.4-16.3 render this rule and would
+   otherwise reserve a zero-height line. They get the body's 1.5
+   line-height as a number; everything newer measures the line itself
+   and the copy stops mattering. Firefox never sees the calc: lh landed
+   there in 120 and :has() in 121, so any Firefox that matches this
+   selector already has the unit. */
+.rst-field-row > .rst-field:not(:has(> .rst-field__label))::before, [rst-field-row] > [rst-field]:not(:has(> [rst-field-label]))::before { block-size: calc(var(--rst-fs-sm) * 1.5); block-size: 1lh; content: ""; display: block; font-size: var(--rst-fs-sm); margin-block-end: 0.2rem; }
+/* A row is sized by its controls, never by its messages: contain keeps a
+   long error out of the field's max-content width, so the sentence wraps
+   under its own control instead of stretching the column it belongs to
+   and squeezing the field beside it. */
+.rst-field-row > .rst-field > :is(.rst-field__help, .rst-field__error, .rst-field__hint), [rst-field-row] > [rst-field] > :is([rst-field-help], [rst-field-error], [rst-field-hint]) { contain: inline-size; }
+/* field-daterange — the fieldset reset the grouped start/end pair needs,
+   with the legend sized like a field label. Its own selector rather than
+   a share of .rst-choice: the two groups look alike today, and a card
+   tweak there must not silently reshape a date range. */
+.rst-field-range, [rst-field-range] { border: 0; margin: var(--rst-sp-4) 0; padding: 0; }
+.rst-field-range > legend, [rst-field-range] > legend { font-size: var(--rst-fs-sm); font-weight: 600; margin: 0 0 0.45rem; padding: 0; }
+.rst-field-range > .rst-field-row, [rst-field-range] > [rst-field-row] { margin: 0; }
+.rst-form-bar, [rst-form-bar] { align-items: center; background: var(--rst-bg); border-top: 1px solid var(--rst-line); bottom: 0; display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.75rem; padding: 0.8rem 0; position: sticky; z-index: 5; }
+.rst-form-bar .rst-form-bar__note, [rst-form-bar] [rst-form-bar-note] { color: var(--rst-text-muted); font-size: var(--rst-fs-xs); margin-inline-end: auto; }
+.rst-form-actions, [rst-form-actions] { display: flex; gap: 0.5rem; justify-content: flex-end; }
+/* form/form-foot — the container the form-foot partial's callers wrap
+   fields in, and the closing action row form-foot itself emits. */
+/* One spacing mechanism, not two. The form is a flex column, so its
+   children's own stacking margins never collapse — they were added to
+   the gap, and they were also added at the two ends, where nothing is
+   being separated from anything. Inside a card holding a single field
+   that was the whole of the dead space under the control: 16px of
+   field margin on top of the card's own padding, at both ends. The gap
+   is now the rhythm (the same var(--rst-sp-5) .rst-form-flow uses
+   between its fields) and the blocks contribute no margin of their
+   own.
+
+   Stated as a rule over every child rather than as a list of the
+   classes we happen to ship: a list is a promise this file cannot keep,
+   because it cannot name .rst-callout's successor, and it cannot name
+   an app's own div at all — and a child the list forgot lands at gap
+   plus its own two margins, which is the bug this rule exists to
+   prevent. So: the form owns the block rhythm, full stop, and the two
+   deliberate exceptions are exempted here where they can be read.
+   .rst-form-foot and .rst-form-bar both set a block-start margin that
+   is not rhythm — it is the extra air that separates a closing action
+   row from the last question above it. */
+.rst-form, [rst-form] { display: flex; flex-direction: column; gap: var(--rst-sp-5); max-inline-size: 44rem; }
+.rst-form > *:not(.rst-form-foot, .rst-form-bar), [rst-form] > *:not([rst-form-foot], [rst-form-bar]) { margin-block: 0; }
+/* The closing action row the form-foot partial emits. It was
+   rst-form__foot until the markup flip (spec §6-v3): BEM's __ flattens
+   to a hyphen, so it and the sticky save bar above wanted the same
+   attribute, and a name the partial emits is the one that should own
+   the name the partial is called. The save bar, which no partial emits
+   and every caller writes by hand, is rst-form-bar now. */
+.rst-form-foot, [rst-form-foot] { display: flex; gap: var(--rst-sp-3); margin-block-start: var(--rst-sp-3); }
+
+@media (prefers-reduced-motion: reduce) {
+  .rst-switch__track, [rst-switch-track], .rst-switch__track::after, [rst-switch-track]::after { transition: none; }
+}
+
+/* ── The routes family: confirm, toggle-block, modal shells, bulk-bar,
+      help ────────────────────────────────────────────────────────── */
+
+/* toggle-block — a bordered card whose head is a switch; the body
+   reveals via :has(), zero JS. The switch is authoritative: the server
+   treats off as off, whatever the revealed (still-POSTed) fields say. */
+.rst-tblock, [rst-tblock] { background: var(--rst-surface); border: 1px solid var(--rst-line); border-radius: var(--rst-radius); margin: 0.7rem 0; overflow: hidden; }
+.rst-tblock > .rst-tblock__head, [rst-tblock] > [rst-tblock-head] { align-items: flex-start; cursor: pointer; display: flex; gap: 0.85rem; margin: 0; padding: 0.9rem 1.05rem; }
+.rst-tblock > .rst-tblock__head:hover, [rst-tblock] > [rst-tblock-head]:hover { background: var(--rst-accent-soft); }
+.rst-tblock .rst-tblock__title, [rst-tblock] [rst-tblock-title] { display: block; font-size: var(--rst-fs-sm); font-weight: 550; }
+.rst-tblock .rst-tblock__desc, [rst-tblock] [rst-tblock-desc] { color: var(--rst-text-muted); display: block; font-size: var(--rst-fs-xs); }
+.rst-tblock .rst-tblock__head input, [rst-tblock] [rst-tblock-head] input { height: 1px; opacity: 0; position: absolute; width: 1px; }
+.rst-tblock:has(.rst-tblock__head input:checked) .rst-switch__track, [rst-tblock]:has([rst-tblock-head] input:checked) [rst-switch-track] { background: var(--rst-accent); }
+.rst-tblock:has(.rst-tblock__head input:checked) .rst-switch__track::after, [rst-tblock]:has([rst-tblock-head] input:checked) [rst-switch-track]::after { transform: translateX(15px); }
+.rst-tblock:has(.rst-tblock__head input:focus-visible) .rst-switch__track, [rst-tblock]:has([rst-tblock-head] input:focus-visible) [rst-switch-track] { outline: 2px solid var(--rst-accent); outline-offset: 2px; }
+.rst-tblock > .rst-tblock__body, [rst-tblock] > [rst-tblock-body] { display: none; }
+.rst-tblock:has(.rst-tblock__head input:checked) > .rst-tblock__body, [rst-tblock]:has([rst-tblock-head] input:checked) > [rst-tblock-body] { background: var(--rst-surface-2); border-radius: 0 0 var(--rst-radius) var(--rst-radius); border-top: 1px solid var(--rst-line); display: block; padding: 0.9rem 1.05rem 1.05rem; }
+
+/* modal route — its own URL: the response renders the page you'll
+   return to inside an inert backdrop, then the overlay. Closing is a
+   plain link to that page. */
+.rst-backdrop, [rst-backdrop] { display: contents; }
+/* The scroll lock. It used to shift the whole page sideways as it
+   landed, because taking the scrollbar away takes its width away too;
+   --rst-scrollbar-gutter at the top of this file reserves that width
+   whether or not a scrollbar is in it, so the page now stays put. */
+body:has(.rst-backdrop), body:has([rst-backdrop]) { overflow: hidden; }
+.rst-modal-overlay, [rst-modal-overlay] { align-items: center; background: var(--rst-overlay); display: flex; inset: 0; justify-content: center; padding: 2rem 1rem; position: fixed; z-index: 10; }
+.rst-modal-panel, [rst-modal-panel] { background: var(--rst-bg); border: 1px solid var(--rst-line); border-radius: 14px; box-shadow: var(--rst-shadow-pop); display: flex; max-height: min(85vh, 640px); max-width: 860px; overflow: hidden; width: 100%; }
+/* The panel is a <dialog open>: the rendered-open, NON-modal dialog is
+   exactly what a modal-as-a-URL is — the server sends the page with the
+   dialog already open, and nothing calls showModal(). So ::backdrop is
+   never painted (it only exists for the top layer) and .rst-modal-overlay
+   stays the scrim, as it was. What the element does bring is a UA block
+   this idiom has to undo: absolute positioning with auto inline insets,
+   auto margins, 1em of padding and the Canvas colour pair. Reset them
+   and the panel lays out as the ordinary flex item it already was. */
+dialog.rst-modal-panel, dialog[rst-modal-panel] { block-size: auto; color: inherit; inset: auto; margin: 0; padding: 0; position: static; }
+.rst-modal-panel > nav, [rst-modal-panel] > nav { border-inline-end: 1px solid var(--rst-line); display: flex; flex: none; flex-direction: column; gap: 0.15rem; padding: 1.1rem 0.8rem; width: 180px; }
+.rst-modal-panel > nav a, [rst-modal-panel] > nav a { border-radius: 8px; color: inherit; padding: 0.4rem 0.65rem; text-decoration: none; }
+.rst-modal-panel > nav a:hover, [rst-modal-panel] > nav a:hover { background: var(--rst-accent-soft); }
+.rst-modal-panel > nav a[aria-current], [rst-modal-panel] > nav a[aria-current] { background: var(--rst-accent-soft); color: var(--rst-accent); font-weight: 600; }
+.rst-modal-panel > section, [rst-modal-panel] > section { flex: 1; min-width: 0; overflow-y: auto; padding: 1.5rem 2rem 2rem; position: relative; }
+.rst-modal-close, [rst-modal-close] { color: var(--rst-text-muted); font-size: 1.5rem; inset-inline-end: 1.1rem; line-height: 1; position: absolute; text-decoration: none; top: 1rem; }
+.rst-modal-close:hover, [rst-modal-close]:hover { color: inherit; }
+@media (max-width: 800px) {
+  .rst-modal-overlay, [rst-modal-overlay] { padding: 0.75rem; }
+  .rst-modal-panel, [rst-modal-panel] { flex-direction: column; max-height: 92vh; }
+  .rst-modal-panel > nav, [rst-modal-panel] > nav { border-bottom: 1px solid var(--rst-line); border-inline-end: 0; flex-direction: row; width: auto; }
+}
+
+/* help — a bordered ? icon-link to a section's help article: plain <a>,
+   new tab, CSS tooltip. The tooltip is NOT the accessible name — the
+   link must carry a full aria-label of its own. */
+.rst-help, [rst-help] { align-items: center; border: 1px solid var(--rst-line-strong); border-radius: 7px; color: var(--rst-text-muted); display: inline-flex; height: 28px; justify-content: center; position: relative; width: 28px; }
+.rst-help:hover, [rst-help]:hover { border-color: var(--rst-text-faint); color: var(--rst-text); }
+.rst-help svg, [rst-help] svg, .rst-help .icon, [rst-help] .icon { height: 15px; width: 15px; }
+.rst-tip::after, [rst-tip]::after { background: var(--rst-text); border-radius: var(--rst-radius-sm); color: var(--rst-bg); content: attr(data-tip); font-size: var(--rst-fs-xs); font-weight: 500; inset-inline-end: 0; opacity: 0; padding: 3px 8px; pointer-events: none; position: absolute; top: calc(100% + 6px); transition: opacity 0.12s; white-space: nowrap; z-index: 35; }
+.rst-tip:hover::after, [rst-tip]:hover::after, .rst-tip:focus-visible::after, [rst-tip]:focus-visible::after { opacity: 1; }
+
+/* bulk-bar + selbox — select mode as server-rendered state. */
+.rst-bulkbar, [rst-bulkbar] { align-items: center; background: var(--rst-accent-soft); border-bottom: 1px solid var(--rst-line); display: flex; gap: 0.7rem; min-height: 46px; padding-block: 0; padding-inline: 0.6rem 0.85rem; }
+.rst-bulkbar__close, [rst-bulkbar-close] { align-items: center; border-radius: var(--rst-radius-sm); color: var(--rst-text-muted); display: inline-flex; height: 26px; justify-content: center; text-decoration: none; width: 26px; }
+.rst-bulkbar__close:hover, [rst-bulkbar-close]:hover { background: var(--rst-accent-soft); color: var(--rst-text); }
+.rst-bulkbar__close svg, [rst-bulkbar-close] svg, .rst-bulkbar__close .icon, [rst-bulkbar-close] .icon { height: 15px; width: 15px; }
+.rst-bulkbar__count, [rst-bulkbar-count] { font-size: var(--rst-fs-sm); font-weight: 600; }
+.rst-bulkbar__escalate, [rst-bulkbar-escalate] { color: var(--rst-accent); font-size: var(--rst-fs-xs); font-weight: 550; text-decoration: none; }
+.rst-bulkbar__escalate:hover, [rst-bulkbar-escalate]:hover { text-decoration: underline; }
+.rst-bulkbar .rst-dropdown, [rst-bulkbar] [rst-dropdown] { margin-inline-start: auto; }
+.rst-bulkbar .rst-dropdown > summary, [rst-bulkbar] [rst-dropdown] > summary { background: var(--rst-surface); border: 1px solid var(--rst-line-strong); border-radius: 7px; font-size: var(--rst-fs-xs); font-weight: 550; padding: 0.22rem 0.6rem; }
+/* The row checkbox's target is its LABEL, padded so the unchanged 16px
+   box sits in a 24×24 target (WCAG 2.5.8) on every screen. Inside a row
+   whose whole width is a link, WCAG's spacing exception cannot rescue a
+   16px target, since the row's link covers the space around it, so
+   the padding applies on a desktop too, not only on touch. inline-flex
+   and justify-self: start keep the label its own size in a grid cell
+   and in a line, where display: flex made it as wide as either. A
+   larger invisible hit area was rejected: it would overlap the row's own overlay and take clicks meant for it. */
+.rst-selbox, [rst-selbox] { align-items: center; display: inline-flex; justify-self: start; margin: 0; padding: 4px; }
+.rst-selbox input, [rst-selbox] input { accent-color: var(--rst-accent); cursor: pointer; height: 16px; margin: 0; width: 16px; }
+.rst-selbox input:focus-visible, [rst-selbox] input:focus-visible { outline: 2px solid var(--rst-accent); outline-offset: 2px; }
+
+.rst-back-nav, [rst-back-nav] { margin: 0 0 var(--rst-sp-3); }
+.rst-back-nav a, [rst-back-nav] a { color: var(--rst-text-muted); text-decoration: none; }
+.rst-back-nav a:hover, [rst-back-nav] a:hover { color: var(--rst-accent); }
+.rst-notice, [rst-notice] { background: var(--rst-tone-positive-bg); border-radius: var(--rst-radius-sm); color: var(--rst-tone-positive-fg); font-size: var(--rst-fs-sm); padding: 0.5rem 0.75rem; }
+.rst-form-error, [rst-form-error] { color: var(--rst-tone-negative-fg); font-size: var(--rst-fs-sm); }
+
+@media (prefers-reduced-motion: reduce) {
+  .rst-tip::after, [rst-tip]::after { transition: none; }
+}
+
+/* rst-spin — the working indicator a status page or busy button wears.
+   Pure CSS; reduced-motion users get a steady dimmed ring instead of
+   rotation. */
+.rst-spin, [rst-spin] {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  /* Physical on purpose: the gap in a ring that rotates a full turn
+     every 0.8s has no start or end side to mirror. */
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -0.15em;
+  animation: rst-spin 0.8s linear infinite;
+}
+@keyframes rst-spin { to { transform: rotate(1turn); } }
+
+/* A running job's determinate bar: a native <progress>, styled the same
+   way and for the same reasons as [rst-meter-bar] — see that block for
+   why the three engines need three rules that cannot be merged, and for
+   the same honest flag about the -moz- one being unverified here.
+   <progress>'s pseudo-elements are its own: ::-webkit-progress-bar is
+   the track, ::-webkit-progress-value the fill, ::-moz-progress-bar the
+   fill. It is a block on its own line under the sentence, because it
+   measures the job the sentence is about. */
+.rst-job__bar, [rst-job-bar] { appearance: none; background: var(--rst-accent-soft); block-size: 4px; border: 0; border-radius: 2px; display: block; inline-size: 100%; margin-block-start: var(--rst-sp-2); }
+.rst-job__bar::-webkit-progress-bar, [rst-job-bar]::-webkit-progress-bar { background: var(--rst-accent-soft); border-radius: 2px; }
+.rst-job__bar::-webkit-progress-value, [rst-job-bar]::-webkit-progress-value { background: var(--rst-accent); border-radius: 2px; }
+.rst-job__bar::-moz-progress-bar, [rst-job-bar]::-moz-progress-bar { background: var(--rst-accent); border-radius: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .rst-spin, [rst-spin] { animation: none; opacity: 0.5; }
+}
+
+/* field-select's combobox, built by rastrillo.js past ten options. The
+   popup deliberately borrows .rst-dropdown__menu's shape so the two
+   overlays read as one system. Nothing here styles the native <select>:
+   it keeps .rst-input and is simply moved out of sight by .rst-sr-only. */
+.rst-combo, [rst-combo] { position: relative; }
+.rst-combo__list, [rst-combo-list] { background: var(--rst-surface); border: 1px solid var(--rst-line); border-radius: 9px; box-shadow: var(--rst-shadow-pop); inset-inline: 0; list-style: none; margin-top: 4px; max-block-size: 15rem; overflow-y: auto; padding: 0.25rem; position: absolute; top: 100%; z-index: 30; }
+.rst-combo__option, [rst-combo-option] { border-radius: var(--rst-radius-sm); color: inherit; cursor: pointer; font-size: var(--rst-fs-sm); padding: 0.4rem 0.65rem; }
+.rst-combo__option:hover, [rst-combo-option]:hover, .rst-combo__option.is-active, [rst-combo-option].is-active { background: var(--rst-accent-soft); }
+/* The committed option is marked in the accessibility tree by
+   aria-selected; this is the matching visual, never the only signal. */
+.rst-combo__option[aria-selected="true"], [rst-combo-option][aria-selected="true"] { font-weight: 600; }
+/* A grouped <select> keeps its groups: each <optgroup> becomes an ARIA
+   group holding its own list of rows, under a heading that is furniture
+   only — the group's aria-label is what a screen reader announces.
+   Same faint uppercase recipe as .rst-lrow--head, for the same reason:
+   it names a run of rows without competing with them. */
+.rst-combo__rows, [rst-combo-rows] { list-style: none; margin: 0; padding: 0; }
+.rst-select__group, [rst-select-group] { color: var(--rst-text-faint); font-size: var(--rst-fs-xs); font-weight: 550; letter-spacing: 0.05em; padding-block: 0.4rem 0.2rem; padding-inline: 0.65rem; text-transform: uppercase; }
+/* The rest of the combobox's furniture. A divider the page drew between
+   two options (an <hr>, pinned rows above the rest) and the row saying
+   nothing matches are never stops: select.js leaves both out of the
+   keyboard order, and the divider hides while a search re-ranks. */
+.rst-combo__sep, [rst-combo-sep] { border-top: 1px solid var(--rst-line); list-style: none; margin-block: 0.25rem; }
+.rst-combo__empty, [rst-combo-empty] { color: var(--rst-text-faint); font-size: var(--rst-fs-sm); list-style: none; padding: 0.4rem 0.65rem; }
+/* An option with a description reads as one line: the name, then the
+   description quieter — the brackets the native option carries are for a
+   reader without JavaScript, and colour does that job here. */
+.rst-combo__desc, [rst-combo-desc] { color: var(--rst-text-faint); margin-inline-start: 0.5em; }
+/* A decorative glyph (a country's flag) before a row, and before the
+   closed box once that row is picked. aria-hidden everywhere; the text
+   still says which option it is. The box makes room only while there is
+   a glyph to show. */
+.rst-combo__option > .rst-combo__lead, [rst-combo-option] > [rst-combo-lead] { margin-inline-end: 0.5em; }
+.rst-combo > .rst-combo__lead, [rst-combo] > [rst-combo-lead] { align-items: center; display: flex; inset-block: 0; inset-inline-start: 0.65rem; pointer-events: none; position: absolute; }
+.rst-combo > .rst-combo__lead[hidden], [rst-combo] > [rst-combo-lead][hidden] { display: none; }
+.rst-combo.rst-combo__has-lead > .rst-input, [rst-combo][rst-combo-has-lead] > [rst-input] { padding-inline-start: 2.2rem; }
+/* The list opens upward when there is no room below it (select.js
+   measures the visual viewport, which a phone's keyboard shrinks). */
+.rst-combo.rst-combo__up > .rst-combo__list, [rst-combo][rst-combo-up] > [rst-combo-list] { bottom: 100%; margin-bottom: 4px; margin-top: 0; top: auto; }
+
+/* The date fields' combobox, built by datetime.js on any input carrying
+   data-rst-date or data-rst-time. Same shape as .rst-combo above, plus
+   a picker button anchored in the field and two kinds of row: the
+   reading of what was typed (with its Set affordance) and the quick
+   picks under it. The native input is not styled here either — it keeps
+   its value and its name and is simply moved out of sight by
+   .rst-sr-only, because it is what the form submits. */
+.rst-dtp, [rst-dtp] { position: relative; }
+.rst-dtp__input, [rst-dtp-input] { padding-inline-end: 2.25rem; }
+/* The button is anchored to .rst-dtp, which is exactly as wide and as
+   tall as the input it wraps once the input is a border box — so
+   inset-inline-end puts it at the control's inline end in either
+   writing mode, and inset-block:0 with auto block margins centres it on
+   the control at whatever height the type scale gives it. The old
+   inset-block-start:0.3rem was that centring measured once by hand
+   against one font size. .rst-dtp__input's padding-inline-end is the
+   room this reserves inside the control, so text never runs under it,
+   with a value or without one. */
+.rst-dtp__pick, [rst-dtp-pick] { align-items: center; background: none; border: 0; border-radius: var(--rst-radius-sm); block-size: 1.75rem; color: var(--rst-text-muted); cursor: pointer; display: flex; inline-size: 1.75rem; inset-block: 0; inset-inline-end: 0.35rem; justify-content: center; margin-block: auto; padding: 0; position: absolute; }
+.rst-dtp__pick:hover, [rst-dtp-pick]:hover { color: var(--rst-text); }
+.rst-dtp__pick svg, [rst-dtp-pick] svg { block-size: 1rem; inline-size: 1rem; }
+.rst-dtp__list, [rst-dtp-list] { background: var(--rst-surface); border: 1px solid var(--rst-line); border-radius: 9px; box-shadow: var(--rst-shadow-pop); inset-inline: 0; list-style: none; margin-block-start: 4px; max-block-size: 17rem; overflow-y: auto; padding: 0.25rem; position: absolute; top: 100%; z-index: 40; }
+.rst-dtp__row, [rst-dtp-row] { align-items: baseline; border-radius: var(--rst-radius-sm); color: inherit; cursor: pointer; display: flex; font-size: var(--rst-fs-sm); gap: 0.5rem; justify-content: space-between; padding: 0.4rem 0.65rem; }
+.rst-dtp__row:hover, [rst-dtp-row]:hover, .rst-dtp__row.is-active, [rst-dtp-row].is-active { background: var(--rst-accent-soft); }
+.rst-dtp__row--set .rst-dtp__label, [rst-dtp-row~="set"] [rst-dtp-label] { font-weight: 600; }
+.rst-dtp__quick .rst-dtp__set, [rst-dtp-quick] [rst-dtp-set] { color: var(--rst-text-muted); }
+/* The committed value is marked in the accessibility tree by
+   aria-selected; this is the matching visual, never the only signal. */
+.rst-dtp__row[aria-selected="true"] .rst-dtp__label, [rst-dtp-row][aria-selected="true"] [rst-dtp-label] { font-weight: 600; }
+.rst-dtp__set, [rst-dtp-set] { flex: none; font-size: var(--rst-fs-xs); color: var(--rst-text-muted); }
+.rst-dtp__hint, [rst-dtp-hint] { color: var(--rst-text-muted); font-size: var(--rst-fs-xs); padding: 0.35rem 0.65rem 0.15rem; }
+
+/* The popup opens above the field where there is no room below it —
+   datetime.js measures and sets .is-above, because a panel hanging off
+   the bottom of the window is a panel whose last week nobody can click.
+   One rule for both popups: only ever one of them is open. */
+.rst-dtp.is-above .rst-dtp__list, [rst-dtp].is-above [rst-dtp-list], .rst-dtp.is-above .rst-cal, [rst-dtp].is-above [rst-cal] { inset-block-end: 100%; margin-block-end: 4px; margin-block-start: 0; top: auto; }
+/* A completion offered rather than chosen — the other months a
+   half-typed word could still have meant. Lighter than the reading
+   above it, because it is a second-best by construction. */
+.rst-dtp__row--alt .rst-dtp__label, [rst-dtp-row~="alt"] [rst-dtp-label] { color: var(--rst-text-muted); }
+
+/* ── The calendar overlay (ui/calendar.js): the month grid a date
+      field's button opens. A real <table> with real column headers,
+      because that is what a calendar is, with role="grid" over the top
+      and a roving tabindex so exactly one day sits in the tab order.
+
+      Sized in rem so the grid keeps its shape when a page is zoomed:
+      seven columns of text, not seven columns of pixels. A fixed inline
+      size rather than the field's, because a calendar is a calendar
+      whatever it hangs under — a month stretched across a wide input is
+      a grid nobody can aim at.
+
+      Everything here is logical (inline/block, never left/right), so a
+      right-to-left page mirrors the panel and the grid together. The
+      chevrons are the one thing that needs saying twice, below.
+      ───────────────────────────────────────────────────────────────── */
+.rst-cal, [rst-cal] { background: var(--rst-surface); border: 1px solid var(--rst-line); border-radius: 9px; box-shadow: var(--rst-shadow-pop); inline-size: 18rem; inset-inline-start: 0; margin-block-start: 4px; padding: var(--rst-sp-2); position: absolute; top: 100%; z-index: 40; }
+.rst-cal__head, [rst-cal-head] { align-items: center; display: flex; gap: var(--rst-sp-1); justify-content: space-between; padding-block-end: var(--rst-sp-2); }
+.rst-cal__title, [rst-cal-title] { flex: 1; font-size: var(--rst-fs-sm); font-weight: 600; text-align: center; }
+.rst-cal__nav, [rst-cal-nav] { align-items: center; background: none; block-size: 1.75rem; border: 0; border-radius: var(--rst-radius-sm); color: var(--rst-text-muted); cursor: pointer; display: flex; inline-size: 1.75rem; justify-content: center; padding: 0; }
+.rst-cal__nav:hover:not(:disabled), [rst-cal-nav]:hover:not(:disabled) { background: var(--rst-accent-soft); color: var(--rst-text); }
+/* A month with nothing pickable in it — past the field's min, or past
+   its max. Dimmed and inert rather than removed, so the header keeps
+   its shape and the title stays where the eye left it. */
+.rst-cal__nav:disabled, [rst-cal-nav]:disabled { cursor: default; opacity: 0.35; }
+.rst-cal__nav svg, [rst-cal-nav] svg { block-size: 1.1rem; inline-size: 1.1rem; }
+/* One chevron, drawn once and turned round for the other direction, so
+   "back" always points at the start of the line — which is the other
+   end of the box in a right-to-left page, and handled there by the
+   panel's own direction rather than a second rule. */
+[rst-cal-nav~="next"] svg, .rst-cal__nav--next svg { transform: scaleX(-1); }
+.rst-cal__grid, [rst-cal-grid] { border-collapse: collapse; inline-size: 100%; table-layout: fixed; }
+.rst-cal__grid th, [rst-cal-grid] th { color: var(--rst-text-muted); font-size: var(--rst-fs-xs); font-weight: 500; padding-block: var(--rst-sp-1); text-align: center; }
+.rst-cal__day, [rst-cal-day] { border-radius: var(--rst-radius-sm); cursor: pointer; font-size: var(--rst-fs-sm); font-variant-numeric: tabular-nums; line-height: 2.15; text-align: center; }
+.rst-cal__day:hover, [rst-cal-day]:hover { background: var(--rst-accent-soft); }
+/* The days either side of the month. Still pickable — reaching for the
+   1st from the row above it is how people use a calendar — but plainly
+   not part of the month on screen. */
+.rst-cal__day.is-outside, [rst-cal-day].is-outside { color: var(--rst-text-faint); }
+/* Today is a ring rather than a fill, so it can still be read when the
+   selection is sitting on top of it. */
+.rst-cal__day.is-today, [rst-cal-day].is-today { box-shadow: inset 0 0 0 1px var(--rst-line-strong); font-weight: 600; }
+/* What the text in the box currently reads as: an outline that follows
+   the words as they are typed. Deliberately quieter than the selection
+   — it is a preview, and nothing has been chosen yet. */
+.rst-cal__day.is-preview, [rst-cal-day].is-preview { box-shadow: inset 0 0 0 2px var(--rst-accent); }
+/* The committed value. aria-selected says so in the accessibility tree;
+   this is the matching visual, never the only signal. */
+.rst-cal__day.is-selected, [rst-cal-day].is-selected { background: var(--rst-accent); color: var(--rst-on-accent); font-weight: 600; }
+.rst-cal__day.is-selected.is-outside, [rst-cal-day].is-selected.is-outside { color: var(--rst-on-accent); }
+/* Outside the field's own min/max. aria-disabled carries it to a screen
+   reader and calendar.js refuses the pick; this says the same to the
+   eye. */
+.rst-cal__day.is-disabled, [rst-cal-day].is-disabled { color: var(--rst-text-faint); cursor: default; text-decoration: line-through; }
+.rst-cal__day.is-disabled:hover, [rst-cal-day].is-disabled:hover { background: none; }
+.rst-cal__day:focus-visible, [rst-cal-day]:focus-visible { outline: 2px solid var(--rst-accent); outline-offset: -2px; }
+
+/* ── Shells: the page frames an app's layout template wraps .rst-page
+      in — topbar and sidebar. Written in logical properties throughout,
+      so a right-to-left locale gets a mirrored shell for free: the rail
+      moves to the inline end, the account menu with it, and nothing
+      here needs a second rule. ─────────────────────────────────────── */
+
+/* skip link — first in the DOM of every shell, out of sight until it
+   takes focus, then a real chip at the block/inline start. A keyboard
+   user must be able to jump the nav; this is the whole mechanism. */
+.rst-skip, [rst-skip] { block-size: 1px; clip-path: inset(50%); inline-size: 1px; overflow: hidden; position: absolute; white-space: nowrap; }
+.rst-skip:focus-visible, [rst-skip]:focus-visible { background: var(--rst-surface); block-size: auto; border: 1px solid var(--rst-accent); border-radius: var(--rst-radius-sm); clip-path: none; color: var(--rst-text); inline-size: auto; inset-block-start: var(--rst-sp-2); inset-inline-start: var(--rst-sp-2); overflow: visible; padding: 0.4rem 0.7rem; text-decoration: none; z-index: 60; }
+
+/* topbar shell — brand, nav and an account menu on one bar, the page
+   column beneath it, a footer under that. The account dropdown is
+   pushed to the inline end by auto margin, not by order or float. */
+.rst-shell-topbar .rst-shell__bar, [rst-shell-topbar] [rst-shell-bar] { align-items: center; background: var(--rst-surface); border-block-end: 1px solid var(--rst-line); display: flex; flex-wrap: wrap; gap: var(--rst-sp-4); padding-block: 0.5rem; padding-inline: var(--rst-sp-4); }
+.rst-shell__brand, [rst-shell-brand] { color: inherit; font-weight: 650; text-decoration: none; }
+.rst-shell__nav, [rst-shell-nav] { display: flex; gap: var(--rst-sp-4); }
+.rst-shell__nav a, [rst-shell-nav] a { border-block-end: 2px solid transparent; color: var(--rst-text-muted); font-size: var(--rst-fs-sm); padding-block: 0.3rem; text-decoration: none; }
+.rst-shell__nav a:hover, [rst-shell-nav] a:hover { color: var(--rst-text); }
+.rst-shell__nav a[aria-current], [rst-shell-nav] a[aria-current] { border-block-end-color: var(--rst-accent); color: var(--rst-text); font-weight: 550; }
+.rst-shell__account, [rst-shell-account] { margin-inline-start: auto; }
+/* an account menu whose block was never overridden has an empty menu; hide the whole control rather than show a dead summary. */
+.rst-shell__account:has(> .rst-dropdown__menu:empty), [rst-shell-account]:has(> [rst-dropdown-menu]:empty) { display: none; }
+.rst-shell__foot, [rst-shell-foot] { border-block-start: 1px solid var(--rst-line); color: var(--rst-text-muted); font-size: var(--rst-fs-xs); padding-block: var(--rst-sp-4); padding-inline: var(--rst-sp-4); text-align: center; }
+/* the topbar shell emits a foot even when the block is un-overridden; an empty one is a stray rule and padding, so draw nothing. */
+.rst-shell__foot:empty, [rst-shell-foot]:empty { display: none; }
+
+/* The topbar's narrow layout. Below 800px — the same breakpoint the
+   sidebar collapses at, deliberately, because two shells with two
+   breakpoints is two systems — the bar's tail (nav, account, locale)
+   goes behind one disclosure carrying the `menu` icon. Above it the
+   summary is display: none and the tail is display: contents, so nav,
+   account and locale are direct flex items of the bar again and the
+   inline-end layout is byte-for-byte the one that shipped before this
+   existed. No script: a <details>, a media query and a pair of display
+   rules.
+
+   Why the tail is a SIBLING of the disclosure rather than its content,
+   which is the shape .rst-shell__chrome already uses: a closed
+   <details> hides its own content, and no CSS reliably un-hides it
+   across engines, so the wide layout could not be recovered from
+   inside one. It also keeps the account menu out of the disclosure
+   entirely, which matters — see the name below.
+
+   The name is rst-shell-menu and NOT rst-menus. <details name>
+   exclusivity is document-wide, not sibling-scoped, so a disclosure
+   sharing the menus' group would be closed by the very account menu it
+   reveals: the user clicks Account and the navigation they opened it
+   from disappears. Same rule this file's rst-menu-group already
+   documents ("a nested group MUST name a different one"), met here for
+   the first time in the framework's own shells. */
+.rst-shell-topbar .rst-shell__menu, [rst-shell-topbar] [rst-shell-menu] { margin-inline-start: auto; }
+.rst-shell-topbar .rst-shell__menu > summary, [rst-shell-topbar] [rst-shell-menu] > summary { align-items: center; border: 1px solid var(--rst-line); border-radius: var(--rst-radius-sm); cursor: pointer; display: flex; font-size: var(--rst-fs-sm); font-weight: 550; gap: 0.35rem; list-style: none; min-block-size: 24px; padding-block: 0.3rem; padding-inline: 0.55rem; }
+.rst-shell-topbar .rst-shell__menu > summary::-webkit-details-marker, [rst-shell-topbar] [rst-shell-menu] > summary::-webkit-details-marker { display: none; }
+.rst-shell-topbar .rst-shell__tail, [rst-shell-topbar] [rst-shell-tail] { display: none; }
+/* The account's auto margin has to be undone here, and stretch does not
+   do it: in a column flex box the inline axis is the CROSS axis, and an
+   item with an auto cross-axis margin is exempt from stretching, so
+   margin-inline-start: auto survived and shoved Account to the trailing
+   edge of the collapsed stack — the same trailing-edge shove that made
+   the wrapped bar look wrong in the first place. The wide query below
+   puts it back. */
+.rst-shell-topbar .rst-shell__menu[open] + .rst-shell__tail, [rst-shell-topbar] [rst-shell-menu][open] + [rst-shell-tail] { display: flex; flex-basis: 100%; flex-direction: column; gap: var(--rst-sp-3); }
+.rst-shell-topbar .rst-shell__tail > .rst-shell__account, [rst-shell-topbar] [rst-shell-tail] > [rst-shell-account] { margin-inline-start: 0; }
+/* flex-start so a nav link's aria-current underline is as wide as its
+   own label rather than as wide as the bar, where it reads as a rule
+   across the menu instead of as a marker on one item. */
+.rst-shell-topbar .rst-shell__tail > .rst-shell__nav, [rst-shell-topbar] [rst-shell-tail] > [rst-shell-nav] { align-items: flex-start; flex-direction: column; gap: var(--rst-sp-2); }
+/* The nav links pick up the inline padding the two menu summaries below
+   them already carry, so the collapsed stack reads as one column of
+   labels rather than three components that happen to be above each
+   other. Same reason the rail's links carry 0.55rem. */
+.rst-shell-topbar .rst-shell__tail > .rst-shell__nav a, [rst-shell-topbar] [rst-shell-tail] > [rst-shell-nav] a { padding-inline: 0.6rem; }
+@media (min-width: 800px) {
+  .rst-shell-topbar .rst-shell__menu, [rst-shell-topbar] [rst-shell-menu] { display: none; }
+  /* Both selectors, and both at least as specific as the narrow rules
+     they undo: a media query adds no specificity, so the open
+     disclosure's 0-4-0 rule above would otherwise keep the tail a
+     column for anyone who opened the menu and then widened the
+     window. */
+  .rst-shell-topbar .rst-shell__tail,
+  [rst-shell-topbar] [rst-shell-tail],
+  .rst-shell-topbar .rst-shell__menu[open] + .rst-shell__tail,
+  [rst-shell-topbar] [rst-shell-menu][open] + [rst-shell-tail] { display: contents; }
+  .rst-shell-topbar .rst-shell__tail > .rst-shell__account, [rst-shell-topbar] [rst-shell-tail] > [rst-shell-account] { margin-inline-start: auto; }
+  .rst-shell-topbar .rst-shell__tail > .rst-shell__nav, [rst-shell-topbar] [rst-shell-tail] > [rst-shell-nav] { align-items: normal; flex-direction: row; gap: var(--rst-sp-4); }
+  .rst-shell-topbar .rst-shell__tail > .rst-shell__nav a, [rst-shell-topbar] [rst-shell-tail] > [rst-shell-nav] a { padding-inline: 0; }
+}
+
+/* sidebar shell — a rail beside the page. Below 800px the rail is not
+   shown on a content page and IS the page on the index (the index/back
+   block after the console's). The main column carries min-inline-size:
+   0 so a wide child (a list grid, a <pre>) scrolls itself instead of
+   stretching the grid track.
+
+   LEGACY, kept for layouts written before the phone index: the
+   <details rst-shell-chrome> drawer, which opened the rail into the
+   page flow. Its rules are the ones naming rst-shell-chrome, below and
+   in the wide block. None of the index/back rules match an old
+   layout's root (it has no view), so an app that re-vendors tokens.css
+   but keeps its old layout still has its drawer. Delete these rules
+   together once no layout and no gallery page writes rst-shell-chrome. */
+.rst-shell__main, [rst-shell-main] { min-inline-size: 0; }
+/* box-sizing on the rail, per this file's convention (see .rst-input
+   above): set on the component that needs it, never in a `*` reset.
+   The rail is the one box in the stylesheet whose height is the
+   VIEWPORT'S — block-size: 100dvh in the query below — and it also
+   carries padding, so as a content box its border box was 100dvh + 32px.
+   Sticky at inset-block-start: 0, the last 32px of it hung under the
+   window and clipped whatever sat at its foot; overflow-y: auto could
+   not help, because the content fitted the content box and no scrollbar
+   was ever owed. Anything sized against the viewport has to be measured
+   the way the viewport measures it. */
+.rst-shell-sidebar > .rst-shell__rail, [rst-shell-sidebar] > [rst-shell-rail] { background: var(--rst-surface); border-block-end: 1px solid var(--rst-line); box-sizing: border-box; display: none; flex-direction: column; gap: var(--rst-sp-3); padding: var(--rst-sp-4); }
+/* LEGACY: the old drawer, see above. */
+.rst-shell-sidebar > .rst-shell__chrome > summary, [rst-shell-sidebar] > [rst-shell-chrome] > summary { align-items: center; border-block-end: 1px solid var(--rst-line); cursor: pointer; display: flex; font-size: var(--rst-fs-sm); font-weight: 550; gap: 0.3rem; list-style: none; padding-block: 0.55rem; padding-inline: var(--rst-sp-4); }
+/* LEGACY: the old drawer, see above. */
+.rst-shell-sidebar > .rst-shell__chrome > summary::-webkit-details-marker, [rst-shell-sidebar] > [rst-shell-chrome] > summary::-webkit-details-marker { display: none; }
+/* LEGACY: the old drawer, see above. */
+.rst-shell-sidebar > .rst-shell__chrome[open] + .rst-shell__rail, [rst-shell-sidebar] > [rst-shell-chrome][open] + [rst-shell-rail] { display: flex; }
+.rst-shell__group, [rst-shell-group] { color: var(--rst-text-faint); font-size: var(--rst-fs-xs); font-weight: 550; letter-spacing: 0.05em; margin-block: var(--rst-sp-3) 0.2rem; text-transform: uppercase; }
+.rst-shell-sidebar .rst-shell__nav, [rst-shell-sidebar] [rst-shell-nav] { flex-direction: column; gap: 2px; }
+.rst-shell-sidebar .rst-shell__nav a, [rst-shell-sidebar] [rst-shell-nav] a { border-block-end: 0; border-radius: var(--rst-radius-sm); display: block; padding-block: 0.35rem; padding-inline: 0.55rem; }
+.rst-shell-sidebar .rst-shell__nav a:hover, [rst-shell-sidebar] [rst-shell-nav] a:hover { background: var(--rst-accent-soft); color: var(--rst-text); }
+.rst-shell-sidebar .rst-shell__nav a[aria-current], [rst-shell-sidebar] [rst-shell-nav] a[aria-current] { background: var(--rst-accent-soft); color: var(--rst-accent); font-weight: 600; }
+/* The rail's foot — the language switcher and the person, in the corner
+   an app puts them in everywhere else. margin-block-start: auto is the
+   whole mechanism: the rail is a column flex box, so the auto margin
+   eats whatever height is left between the nav and the bottom.
+
+   Below 800px the rail on the phone index is STILL a flex column, and
+   it has a min-block-size of the whole screen there, so this auto
+   margin would float the foot to the bottom of the screen, where the
+   language menu would open off it. The index rules replace it with a
+   fixed gap; the 390px leg of
+   TestTheSidebarRailPutsThePersonAtItsFootAndTheLanguageMenuOpensUpward
+   measures that gap for exactly that reason. */
+.rst-shell__rail-foot, [rst-shell-rail-foot] { display: flex; flex-direction: column; gap: var(--rst-sp-3); margin-block-start: auto; }
+/* An un-overridden shell renders the wrapper with nothing in it; draw
+   no gap for it, the same way .rst-shell__foot handles its own. Kept
+   for layouts from before the profile menu, whose foot held the two
+   blocks bare. */
+.rst-shell__rail-foot:empty, [rst-shell-rail-foot]:empty { display: none; }
+/* The profile menu: the rail foot's one control, an avatar button
+   whose card holds the person's name, the language and the account's
+   links. It is an rst-dropdown, so rastrillo.js already closes it on an
+   outside click and on Escape, and the anchored-menu rules already keep
+   its card on screen; these rules are its shape.
+
+   The foot goes only for the layout's placeholder (the empty avatar
+   named Account, marked placeholder) when there is also nothing to
+   choose: a button opening an empty card. A real person stays even
+   with no language and no links, because the signed-in person must not
+   vanish from the rail. Without :has() the placeholder stays, a button
+   opening a card that holds "Account", which is harmless. */
+.rst-shell__rail-foot:has(.rst-shell__who:only-child .rst-person__av--placeholder), [rst-shell-rail-foot]:has([rst-shell-who]:only-child [rst-person-av~="placeholder"]) { display: none; }
+/* The avatar is the person partial's own circle at its own size. The
+   name stays in the summary, clipped rather than hidden, because it is
+   the button's accessible name: the circle is aria-hidden decoration.
+   The email is out of the name, display: none, so a screen reader hears
+   who, not their address. */
+.rst-shell__avatar, [rst-shell-avatar] { align-items: center; display: inline-flex; justify-content: center; }
+.rst-shell__avatar .rst-person__name, [rst-shell-avatar] [rst-person-name] { block-size: 1px; clip-path: inset(50%); inline-size: 1px; overflow: hidden; position: absolute; white-space: nowrap; }
+.rst-shell__avatar .rst-person__email, [rst-shell-avatar] [rst-person-email] { display: none; }
+/* inline-flex, not the dropdown summary's flex: a summary as wide as
+   the rail would draw the round hover fill as a long oval. */
+.rst-shell__profile > summary, [rst-shell-profile] > summary { border-radius: 50%; color: var(--rst-text); display: inline-flex; justify-content: center; padding: 4px; }
+.rst-shell__profile > summary:hover, [rst-shell-profile] > summary:hover, .rst-shell__profile[open] > summary, [rst-shell-profile][open] > summary { background: var(--rst-accent-soft); }
+.rst-shell__profile > summary:focus-visible, [rst-shell-profile] > summary:focus-visible { outline: 2px solid var(--rst-accent); outline-offset: 2px; }
+.rst-shell__profile > .rst-dropdown__menu, [rst-shell-profile] > [rst-dropdown-menu] { box-sizing: border-box; inline-size: min(17rem, calc(100vw - 1.5rem)); }
+/* CLOSING ON AN OUTSIDE TAP with scripts off, the topbar card's way:
+   while open the summary grows an invisible layer over the viewport,
+   under the card, so a tap outside the card is a click on the summary
+   and closes it natively. On a desktop the rail is lifted while the
+   menu is open (the wide block below). */
+.rst-shell__profile[open] > summary::before, [rst-shell-profile][open] > summary::before { content: ""; cursor: default; inset: 0; position: fixed; z-index: 1; }
+/* The card's head: the name and the email the summary keeps out of
+   sight. The avatar is already on screen as the button. The console
+   writes the same head into its tail, where it shows only on the phone
+   index; hidden here so the wide bar's display: contents cannot make
+   it a flex item of the bar. */
+.rst-shell__who, [rst-shell-who] { border-block-end: 1px solid var(--rst-line); margin-block-end: 0.25rem; min-inline-size: 0; padding-block: 0.35rem 0.55rem; padding-inline: 0.65rem; }
+.rst-shell__who .rst-person__av, [rst-shell-who] [rst-person-av] { display: none; }
+.rst-shell__tail > .rst-shell__who, [rst-shell-tail] > [rst-shell-who] { display: none; }
+/* A menu inside the card (the language switcher) opens IN PLACE, as
+   the topbar card's do: a popover inside a popover has nowhere good to
+   go on a phone, and on a desktop it would cover the card it came
+   from. Its summary reads as one of the card's rows. */
+.rst-shell__profile .rst-dropdown__menu .rst-dropdown__menu, [rst-shell-profile] [rst-dropdown-menu] [rst-dropdown-menu] { border: 0; box-shadow: none; inset: auto; margin: 0; max-block-size: none; min-width: 0; padding-block: 0; padding-inline: 0.5rem 0; position: static; }
+.rst-shell__profile .rst-dropdown__menu .rst-dropdown > summary, [rst-shell-profile] [rst-dropdown-menu] [rst-dropdown] > summary { border-radius: var(--rst-radius-sm); color: var(--rst-text); font-size: var(--rst-fs-sm); justify-content: space-between; padding: 0.4rem 0.65rem; }
+.rst-shell__profile .rst-dropdown__menu .rst-dropdown > summary:hover, [rst-shell-profile] [rst-dropdown-menu] [rst-dropdown] > summary:hover { background: var(--rst-accent-soft); }
+@media (min-width: 800px) {
+  .rst-shell-sidebar, [rst-shell-sidebar] { display: grid; grid-template-columns: 15rem 1fr; }
+  /* LEGACY: the old drawer, see above. */
+  .rst-shell-sidebar > .rst-shell__chrome, [rst-shell-sidebar] > [rst-shell-chrome] { display: none; }
+  .rst-shell-sidebar > .rst-shell__rail, [rst-shell-sidebar] > [rst-shell-rail] { block-size: 100dvh; border-block-end: 0; border-inline-end: 1px solid var(--rst-line); display: flex; inset-block-start: 0; overflow-y: auto; position: sticky; }
+  /* A menu at the foot of a full-height rail is a DROPUP: the same
+     <details> panel, opened block-start-ward instead of block-end-ward,
+     because below it there is only the window's edge. No script — this
+     is one pair of inset values. Only inside this query: below 800px
+     the rail is a content-height column with the whole page under it,
+     so the same menu opens downward there like every other menu in the
+     system. */
+  .rst-shell__rail-foot .rst-dropdown__menu, [rst-shell-rail-foot] [rst-dropdown-menu] { inset-block-end: calc(100% + 4px); inset-block-start: auto; margin-block-start: 0; }
+  /* Where anchor positioning is available the hand-written inset pair
+     has to be handed back, and not because it stopped being right: the
+     insets above are measured against .rst-dropdown's own box, and
+     position-area replaces that box with the region beside the anchor,
+     so calc(100% + 4px) would be 100% of the free space under the foot
+     — the panel launched up the rail. The flip does this case anyway
+     and does it by measuring: there is no room below the rail's foot,
+     so flip-block turns the menu upward on its own, and it turns back
+     down again in a layout where there IS room, which a fixed pair of
+     insets cannot. Specificity is why this is written here rather than
+     left to the generic rule: .rst-shell__rail-foot .rst-dropdown__menu
+     is (0,2,0) and would otherwise outrank it. */
+  @supports (position-area: block-end) and (position-try-fallbacks: flip-block) {
+    .rst-shell__rail-foot .rst-dropdown__menu, [rst-shell-rail-foot] [rst-dropdown-menu] { inset: auto; margin-block-start: 4px; }
+  }
+  /* The profile card is a drop-up anchored at the button's inline
+     start, so it grows from the rail's edge across the page rather than
+     off the side of the window. Written out rather than left to the
+     flip above, which turns a menu upward only when below is full: the
+     card is meant to open upward from the foot whatever the room, and
+     flip-block still turns it down in a window too short for it.
+     Without anchor positioning the card is absolute in the rail, which
+     scrolls, so it takes the rail's width rather than overhanging it. */
+  .rst-shell__rail-foot .rst-shell__profile > .rst-dropdown__menu, [rst-shell-rail-foot] [rst-shell-profile] > [rst-dropdown-menu] { inline-size: auto; inset-inline: 0; }
+  /* The rail is lifted while the profile menu is open because here it
+     is sticky, a stacking context of its own, and the card reaches past
+     it over the page, where anything the page positions at z-index 1 or
+     more (a row's controls, a pinned bar) would otherwise paint over the
+     card and catch the tap. Only while open, as with the topbar's bar:
+     lifted for good, the rail would sit over a modal's scrim. Below
+     800px the index's rail is no stacking context and needs no lift. */
+  .rst-shell-sidebar > .rst-shell__rail:has(.rst-shell__profile[open]), [rst-shell-sidebar] > [rst-shell-rail]:has([rst-shell-profile][open]) { z-index: 45; }
+  @supports (position-area: block-end) and (position-try-fallbacks: flip-block) {
+    .rst-shell__rail-foot .rst-shell__profile > .rst-dropdown__menu, [rst-shell-rail-foot] [rst-shell-profile] > [rst-dropdown-menu] { inline-size: min(17rem, calc(100vw - 1.5rem)); inset: auto; margin-block: 0 4px; position-area: block-start span-inline-end; }
+  }
+}
+
+
+/* console shell — a brand-and-account bar across the top AND a
+   navigation rail down the side. topbar without the rail is topbar;
+   sidebar without the bar is sidebar; this is the admin shape both of
+   them were half of, and the one an app used to hand-write.
+
+   TWO CHROMES, ONE PATTERN EACH. Below 800px the bar's tail (the account
+   and language menus) folds behind the one <details rst-shell-menu> and
+   opens as a card over the page (the card block after this one); the
+   rail is an index page, like the sidebar's (the index/back block after
+   that). The :has() pair below is LEGACY: the rail gated on the Menu's
+   [open], kept for console layouts written before the phone index,
+   whose root has no view.
+
+   The legacy gate is written HIDE-WHEN-CLOSED rather than
+   show-when-open: in an engine without :has() its hide rule never
+   matches and the rail renders as a column of links under the bar,
+   longer page, navigation intact. */
+.rst-shell-console .rst-shell__bar, [rst-shell-console] [rst-shell-bar] { align-items: center; background: var(--rst-surface); border-block-end: 1px solid var(--rst-line); display: flex; flex-wrap: wrap; gap: var(--rst-sp-4); padding-block: 0.5rem; padding-inline: var(--rst-sp-4); }
+.rst-shell-console .rst-shell__menu, [rst-shell-console] [rst-shell-menu] { margin-inline-start: auto; }
+.rst-shell-console .rst-shell__menu > summary, [rst-shell-console] [rst-shell-menu] > summary { align-items: center; border: 1px solid var(--rst-line); border-radius: var(--rst-radius-sm); cursor: pointer; display: flex; font-size: var(--rst-fs-sm); font-weight: 550; gap: 0.35rem; list-style: none; min-block-size: 24px; padding-block: 0.3rem; padding-inline: 0.55rem; }
+.rst-shell-console .rst-shell__menu > summary::-webkit-details-marker, [rst-shell-console] [rst-shell-menu] > summary::-webkit-details-marker { display: none; }
+/* The Menu summary carries both faces: the icon and its word, and the
+   person's avatar, which only the phone index shows (the index block
+   below). display: contents keeps the icon and the word flex items of
+   the summary, laid out exactly as they were before the span wrapped
+   them. */
+.rst-shell__menu-label, [rst-shell-menu-label] { display: contents; }
+.rst-shell__menu .rst-shell__avatar, [rst-shell-menu] [rst-shell-avatar] { display: none; }
+/* The rail, narrow: a full-width column under the bar, disclosed. It
+   holds navigation and nothing else — the language switcher and the
+   person are on the bar — so there is no rail-foot here and nothing
+   pinned to a bottom edge. box-sizing all the same, because the wide
+   query below sizes something in this subtree against the viewport and
+   a viewport promise has to be kept by the border box. */
+.rst-shell-console > .rst-shell__rail, [rst-shell-console] > [rst-shell-rail] { background: var(--rst-surface); border-block-end: 1px solid var(--rst-line); box-sizing: border-box; display: flex; flex-direction: column; gap: var(--rst-sp-3); padding: var(--rst-sp-4); }
+.rst-shell-console .rst-shell__nav, [rst-shell-console] [rst-shell-nav] { flex-direction: column; gap: 2px; }
+.rst-shell-console .rst-shell__nav a, [rst-shell-console] [rst-shell-nav] a { border-block-end: 0; border-radius: var(--rst-radius-sm); display: block; padding-block: 0.35rem; padding-inline: 0.55rem; }
+.rst-shell-console .rst-shell__nav a:hover, [rst-shell-console] [rst-shell-nav] a:hover { background: var(--rst-accent-soft); color: var(--rst-text); }
+.rst-shell-console .rst-shell__nav a[aria-current], [rst-shell-console] [rst-shell-nav] a[aria-current] { background: var(--rst-accent-soft); color: var(--rst-accent); font-weight: 600; }
+.rst-shell-console .rst-shell__menu:not([open]) + .rst-shell__tail, [rst-shell-console] [rst-shell-menu]:not([open]) + [rst-shell-tail] { display: none; }
+/* LEGACY: the rail gated on the Menu's [open], for console layouts
+   written before the phone index. A root with a view is new markup,
+   where the rail follows the view and no :has() decides it; the :not()
+   keeps this rule out of that fight entirely. */
+.rst-shell-console:not(.rst-shell-console--page, .rst-shell-console--index):has(.rst-shell__menu:not([open])) > .rst-shell__rail, [rst-shell-console]:not([rst-shell-console~="page"], [rst-shell-console~="index"]):has([rst-shell-menu]:not([open])) > [rst-shell-rail] { display: none; }
+/* Disclosed, the tail is a column across the full width of the wrapped
+   bar. The account's margin-inline-start: auto has to be undone by
+   hand and stretch does not do it: in a column flex box the inline
+   axis is the CROSS axis, and an item with an auto cross-axis margin
+   is exempt from stretching — the same trap the topbar documents. */
+.rst-shell-console .rst-shell__menu[open] + .rst-shell__tail, [rst-shell-console] [rst-shell-menu][open] + [rst-shell-tail] { display: flex; flex-basis: 100%; flex-direction: column; gap: var(--rst-sp-3); }
+.rst-shell-console .rst-shell__tail > .rst-shell__account, [rst-shell-console] [rst-shell-tail] > [rst-shell-account] { margin-inline-start: 0; }
+@media (min-width: 800px) {
+  /* The frame: bar across the top, rail beside the page, footer under
+     the page and not under the rail. Named areas rather than DOM
+     order, because the DOM order is the reading order and must not be
+     spent on layout — and areas map to the block and inline axes, so
+     an RTL locale gets the rail on the other side with no second rule.
+     min-block-size, never block-size: the rail reaches the foot of a
+     short page, and a long one still scrolls the document. */
+  .rst-shell-console, [rst-shell-console] { display: grid; grid-template-areas: "bar bar" "rail main" "rail foot"; grid-template-columns: 15rem 1fr; grid-template-rows: auto 1fr auto; min-block-size: 100dvh; }
+  .rst-shell-console > .rst-shell__bar, [rst-shell-console] > [rst-shell-bar] { grid-area: bar; }
+  .rst-shell-console > .rst-shell__main, [rst-shell-console] > [rst-shell-main] { grid-area: main; }
+  .rst-shell-console > .rst-shell__foot, [rst-shell-console] > [rst-shell-foot] { grid-area: foot; }
+  .rst-shell-console .rst-shell__menu, [rst-shell-console] [rst-shell-menu] { display: none; }
+  /* Every undo below repeats the narrow rule's own selector, because a
+     media query adds no specificity: without the :has() spelling here
+     a reader who opened the menu and then widened the window would
+     keep a hidden rail. */
+  .rst-shell-console .rst-shell__tail,
+  [rst-shell-console] [rst-shell-tail],
+  .rst-shell-console .rst-shell__menu:not([open]) + .rst-shell__tail,
+  [rst-shell-console] [rst-shell-menu]:not([open]) + [rst-shell-tail],
+  .rst-shell-console .rst-shell__menu[open] + .rst-shell__tail,
+  [rst-shell-console] [rst-shell-menu][open] + [rst-shell-tail] { display: contents; }
+  .rst-shell-console .rst-shell__tail > .rst-shell__account, [rst-shell-console] [rst-shell-tail] > [rst-shell-account] { margin-inline-start: auto; }
+  /* The language menu is first in the tail, ahead of the account
+     (see the layout), so the auto margin that pushes the pair to the
+     bar's inline end goes on whichever comes first after the card's
+     head, and the account after it sits beside it. A layout from
+     before the head keeps the margin on its account. */
+  .rst-shell-console .rst-shell__tail > .rst-shell__who + *, [rst-shell-console] [rst-shell-tail] > [rst-shell-who] + * { margin-inline-start: auto; }
+  .rst-shell-console .rst-shell__tail > .rst-shell__who + * ~ .rst-shell__account, [rst-shell-console] [rst-shell-tail] > [rst-shell-who] + * ~ [rst-shell-account] { margin-inline-start: 0; }
+  .rst-shell-console > .rst-shell__rail, [rst-shell-console] > [rst-shell-rail] { border-block-end: 0; border-inline-end: 1px solid var(--rst-line); display: flex; grid-area: rail; }
+  /* The undo is a rule of ITS OWN, and this is the whole reason: a
+     selector list is invalid as a whole if any selector in it is
+     invalid, so an engine that cannot parse :has() drops every
+     declaration in the list — including grid-area: rail, which has
+     nothing to do with :has() and which this shell's wide layout is
+     built on. Co-listed, the four selectors above cost the legacy
+     engine its declared frame and left the rail in the right cell only
+     because grid auto-placement happened to put it there. Split, the
+     plain pair always applies and only the fight over `display` — the
+     one declaration the narrow hide rule contests — rides on :has().
+     That is the failure direction this shell chose, actually chosen
+     rather than nearly chosen. */
+  .rst-shell-console:not(.rst-shell-console--page, .rst-shell-console--index):has(.rst-shell__menu:not([open])) > .rst-shell__rail,
+  [rst-shell-console]:not([rst-shell-console~="page"], [rst-shell-console~="index"]):has([rst-shell-menu]:not([open])) > [rst-shell-rail] { display: flex; }
+  /* THE VIEWPORT. The rail itself is a grid item stretched to the row,
+     which can be taller than the window — that is what makes the
+     background reach the foot of a long page. So the thing that has to
+     fit the window is the nav, and it is the nav that is sized against
+     it: sticky, capped at the viewport MINUS the two gaps it is inset
+     by, measured as a border box, scrolling itself when an app's
+     navigation is longer than that.
+     This is the shipped regression, avoided by construction rather
+     than by care: block-size: 100dvh on a content box that also
+     carried padding gave a border box 32px taller than the window, and
+     the gate that missed it asked where the person sat inside the rail
+     — a question that stayed true while the rail hung off the screen.
+     TestTheConsoleRailFitsTheViewport asks the other question, and
+     carries a control page that must answer it the other way. */
+  .rst-shell-console > .rst-shell__rail > .rst-shell__nav, [rst-shell-console] > [rst-shell-rail] > [rst-shell-nav] { box-sizing: border-box; inset-block-start: var(--rst-sp-4); max-block-size: calc(100dvh - 2 * var(--rst-sp-4)); overflow-y: auto; position: sticky; }
+}
+
+/* The topbar's narrow menu is a floating card: it overlays the page and
+   never pushes it down. The open tail is placed against the bar, at its
+   inline end (logical insets, so an RTL page anchors it left), scrolling
+   itself if a long nav does not fit. The account and language menus
+   inside it expand in place: a popover inside a popover has nowhere good
+   to go on a phone. It is the menu panels' surface (9px, their border
+   and shadow), so every menu reads as one system. The current item is a
+   fill and weight, never a border or an inset bar.
+
+   EVERY rule here is scoped below 800px rather than written narrow and
+   undone at 800: the wide tail's display: contents removes the tail's
+   box and nothing else, so the account panel would stay static, the nav
+   would lose its underline, and the layer below would still swallow
+   clicks on a desktop someone widened with the menu open. These rules
+   come after both shells' narrow rules above and win at equal weight.
+
+   CLOSING ON AN OUTSIDE TAP, with and without scripts: while open, the
+   summary grows an invisible ::before over the viewport, under the card
+   and over the page. A tap anywhere outside the card lands on it, which
+   is a click on the summary, which closes the <details> natively, and
+   the tap never reaches the page. It is position: fixed inside the bar,
+   so it breaks if an app gives the bar or an ancestor a transform,
+   filter or backdrop-filter (each makes a containing block for fixed
+   descendants). While the card is open the bar's z-index 45 is above
+   the in-page panels (dropdown 30, row menu 40), so a menu left open
+   without scripts cannot paint over the card, and below the skip link
+   (60). Only while open: lifted for good, the bar painted over a modal's
+   scrim (z-index 10), undimmed and still tappable on a phone. Closed, it
+   is positioned at z-index auto, which the scrim covers. The card is
+   sized from the bar (100%), not the viewport, which counts a classic
+   scrollbar's gutter as room and overhung the start edge at 320px.
+   rastrillo.js adds Escape.
+
+   The console's bar folds the same way; its nav is in the rail, so its
+   card holds the account and language menus only. Only a console whose
+   root names its view: an old console layout gates its rail on the
+   same [open], and the tap-to-close layer would cover that rail, so a
+   tap on any rail link would close the navigation instead of following
+   it. An old layout keeps its push-down tail. */
+@media (max-width: 799.98px) {
+  .rst-shell-topbar .rst-shell__bar, [rst-shell-topbar] [rst-shell-bar], .rst-shell-console--page .rst-shell__bar, .rst-shell-console--index .rst-shell__bar, [rst-shell-console~="page"] [rst-shell-bar], [rst-shell-console~="index"] [rst-shell-bar] { position: relative; }
+  .rst-shell-topbar .rst-shell__bar:has(> .rst-shell__menu[open]), [rst-shell-topbar] [rst-shell-bar]:has(> [rst-shell-menu][open]), .rst-shell-console--page .rst-shell__bar:has(> .rst-shell__menu[open]), .rst-shell-console--index .rst-shell__bar:has(> .rst-shell__menu[open]), [rst-shell-console~="page"] [rst-shell-bar]:has(> [rst-shell-menu][open]), [rst-shell-console~="index"] [rst-shell-bar]:has(> [rst-shell-menu][open]) { z-index: 45; }
+  .rst-shell-topbar .rst-shell__menu[open] > summary, [rst-shell-topbar] [rst-shell-menu][open] > summary, .rst-shell-console--page .rst-shell__menu[open] > summary, .rst-shell-console--index .rst-shell__menu[open] > summary, [rst-shell-console~="page"] [rst-shell-menu][open] > summary, [rst-shell-console~="index"] [rst-shell-menu][open] > summary { background: var(--rst-accent-soft); border-color: var(--rst-accent); }
+  .rst-shell-topbar .rst-shell__menu[open] > summary::before, [rst-shell-topbar] [rst-shell-menu][open] > summary::before, .rst-shell-console--page .rst-shell__menu[open] > summary::before, .rst-shell-console--index .rst-shell__menu[open] > summary::before, [rst-shell-console~="page"] [rst-shell-menu][open] > summary::before, [rst-shell-console~="index"] [rst-shell-menu][open] > summary::before { content: ""; cursor: default; inset: 0; position: fixed; z-index: 1; }
+  .rst-shell-topbar .rst-shell__menu[open] + .rst-shell__tail, [rst-shell-topbar] [rst-shell-menu][open] + [rst-shell-tail], .rst-shell-console--page .rst-shell__menu[open] + .rst-shell__tail, .rst-shell-console--index .rst-shell__menu[open] + .rst-shell__tail, [rst-shell-console~="page"] [rst-shell-menu][open] + [rst-shell-tail], [rst-shell-console~="index"] [rst-shell-menu][open] + [rst-shell-tail] { animation: rst-shell-drop 0.14s ease-out; background: var(--rst-surface); border: 1px solid var(--rst-line); border-radius: 9px; box-shadow: var(--rst-shadow-pop); box-sizing: border-box; flex-basis: auto; gap: 0; inline-size: min(20rem, calc(100% - 1.5rem)); inset-block-start: calc(100% + 6px); inset-inline-end: 0.75rem; max-block-size: calc(100dvh - 5rem); overflow-y: auto; overscroll-behavior: contain; padding: 0.35rem; position: absolute; z-index: 2; }
+  .rst-shell-topbar .rst-shell__tail > .rst-shell__nav, [rst-shell-topbar] [rst-shell-tail] > [rst-shell-nav] { align-items: stretch; gap: 0; }
+  .rst-shell-topbar .rst-shell__tail > .rst-shell__nav a, [rst-shell-topbar] [rst-shell-tail] > [rst-shell-nav] a { border-block-end: 0; border-radius: var(--rst-radius-sm); color: var(--rst-text); padding-block: 0.55rem; padding-inline: 0.75rem; }
+  .rst-shell-topbar .rst-shell__tail > .rst-shell__nav a[aria-current], [rst-shell-topbar] [rst-shell-tail] > [rst-shell-nav] a[aria-current] { background: var(--rst-accent-soft); box-shadow: none; color: var(--rst-accent); font-weight: 600; }
+  /* Topbar only: the rule separates the account from the nav above it,
+     and in the console's card the account is first, under nothing. */
+  .rst-shell-topbar .rst-shell__tail > .rst-shell__account, [rst-shell-topbar] [rst-shell-tail] > [rst-shell-account] { border-block-start: 1px solid var(--rst-line); margin-block-start: 0.35rem; padding-block-start: 0.35rem; }
+  .rst-shell-topbar .rst-shell__tail > .rst-shell__account > summary, [rst-shell-topbar] [rst-shell-tail] > [rst-shell-account] > summary, .rst-shell-console--page .rst-shell__tail > .rst-shell__account > summary, .rst-shell-console--index .rst-shell__tail > .rst-shell__account > summary, [rst-shell-console~="page"] [rst-shell-tail] > [rst-shell-account] > summary, [rst-shell-console~="index"] [rst-shell-tail] > [rst-shell-account] > summary { justify-content: space-between; padding-inline: 0.75rem; }
+  .rst-shell-topbar .rst-shell__tail .rst-dropdown__menu, [rst-shell-topbar] [rst-shell-tail] [rst-dropdown-menu], .rst-shell-console--page .rst-shell__tail .rst-dropdown__menu, .rst-shell-console--index .rst-shell__tail .rst-dropdown__menu, [rst-shell-console~="page"] [rst-shell-tail] [rst-dropdown-menu], [rst-shell-console~="index"] [rst-shell-tail] [rst-dropdown-menu] { border: 0; box-shadow: none; inset: auto; margin: 0; max-block-size: none; min-width: 0; padding-block: 0; padding-inline: 0.5rem 0; position: static; }
+}
+@keyframes rst-shell-drop { from { opacity: 0; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) {
+  .rst-shell-topbar .rst-shell__menu[open] + .rst-shell__tail, [rst-shell-topbar] [rst-shell-menu][open] + [rst-shell-tail], .rst-shell-console--page .rst-shell__menu[open] + .rst-shell__tail, .rst-shell-console--index .rst-shell__menu[open] + .rst-shell__tail, [rst-shell-console~="page"] [rst-shell-menu][open] + [rst-shell-tail], [rst-shell-console~="index"] [rst-shell-menu][open] + [rst-shell-tail] { animation: none; }
+}
+
+/* ── Sidebar and console on a phone: the index and the back control ──
+   Below 800px these two shells are two views of every URL, and the page
+   says which with the view block the layout writes into the root:
+   [rst-shell-sidebar~="index"] is the rail as a full-screen page of
+   sections at a real URL; [rst-shell-sidebar~="page"] is the content,
+   with a back control at the top inline-start whose href is the page's
+   up block. No hamburger. The console is the same for its rail, under
+   its bar.
+
+   An old layout's root has no view, so none of these rules match it and
+   it keeps its drawer (the legacy rules above). Scoped below 800px, like
+   the card: at 800 and up both views are the rail beside the page, the
+   back strip and the title are hidden by the rule just below, and
+   nothing here needs undoing. ─────────────────────────────────────── */
+.rst-shell__back, [rst-shell-back], .rst-shell__title, [rst-shell-title] { display: none; }
+/* The heading's two spans: the brand, then the page's title, which
+   shows only when the brand's span rendered nothing, so an app that
+   blanks its brand still has a heading. Each elides on its one line.
+   The brand link fills the row's height, so a tap on the heading's
+   line is a tap on it. */
+.rst-shell__title > *, [rst-shell-title] > * { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rst-shell__title > :not(:empty) + *, [rst-shell-title] > :not(:empty) + * { display: none; }
+/* A brand drawn from data that has none usually renders whitespace,
+   which :empty does not match, and a template cannot trim another
+   template's output. So where :has() is known, a brand span with no
+   element in it counts as blank: it is hidden and the title shows. The
+   cost is a brand written as bare text, with no link or element round
+   it, which reads as blank too; every shipped brand is a link. */
+.rst-shell__title > :first-child:not(:has(*)) + *, [rst-shell-title] > :first-child:not(:has(*)) + * { display: block; }
+.rst-shell__title > :first-child:not(:has(*)), [rst-shell-title] > :first-child:not(:has(*)) { display: none; }
+.rst-shell__title .rst-shell__brand, [rst-shell-title] [rst-shell-brand] { color: inherit; display: block; font-weight: inherit; line-height: 2.75rem; overflow: hidden; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 799.98px) {
+  /* The content view: a sticky strip of its own at the top, first in
+     the reading order after the skip link. Its z-index 9 sits above the
+     sticky form bar (5), so a long form scrolled under the strip does
+     not paint over Back, and below a modal's scrim (10): above it, Back
+     stayed undimmed and live under an open modal on a phone. */
+  .rst-shell-sidebar--page > .rst-shell__back, [rst-shell-sidebar~="page"] > [rst-shell-back], .rst-shell-console--page > .rst-shell__back, [rst-shell-console~="page"] > [rst-shell-back] { align-items: center; background: var(--rst-surface); border-block-end: 1px solid var(--rst-line); display: flex; inset-block-start: 0; min-block-size: 2.75rem; padding-inline: var(--rst-sp-1); position: sticky; z-index: 9; }
+  /* The strip is sticky, not in the flow a plain scroll-to-fragment
+     measures against, so a #fragment link's native landing scroll parks
+     the target's top edge at the root's scroll origin — under the
+     strip, the one thing on a content page actually sitting there.
+     Reserving the strip's own height, border included, as scroll
+     padding is what makes that landing spot the strip's bottom edge
+     instead. */
+  :root:has(.rst-shell-sidebar--page), :root:has([rst-shell-sidebar~="page"]), :root:has(.rst-shell-console--page), :root:has([rst-shell-console~="page"]) { scroll-padding-block-start: calc(2.75rem + 1px); }
+  /* The strip's own link only, by the child combinator: anything else
+     a page puts in the strip (a menu at its inline end) is not a back
+     control, and would otherwise get the accent colour and a chevron. */
+  .rst-shell__back > a, [rst-shell-back] > a { align-items: center; border-radius: var(--rst-radius-sm); color: var(--rst-accent); display: inline-flex; font-size: 1rem; font-weight: 500; gap: 0.5rem; min-block-size: 2.75rem; padding-inline: 0.75rem; text-decoration: none; }
+  /* The chevron is drawn, not an icon: there is no left chevron in the
+     set and no icon mirroring, and a drawn one stays out of the
+     accessible name. Two borders of a small square, turned; physical on
+     purpose, like the switch's knob, because it is a drawing, and
+     mirrored by the rule after it. */
+  .rst-shell__back > a::before, [rst-shell-back] > a::before { block-size: 0.55rem; border-left: 2px solid currentColor; border-top: 2px solid currentColor; content: ""; flex: none; inline-size: 0.55rem; transform: rotate(-45deg); }
+  [dir="rtl"] .rst-shell__back > a::before, [dir="rtl"] [rst-shell-back] > a::before { transform: rotate(135deg); }
+  .rst-shell__back > a:focus-visible, [rst-shell-back] > a:focus-visible { outline: 2px solid var(--rst-accent); outline-offset: -2px; }
+  .rst-shell-console--page > .rst-shell__rail, [rst-shell-console~="page"] > [rst-shell-rail] { display: none; }
+
+  /* The index view: the rail is the page. main and the skip link go with
+     it, so the skip link never points at nothing; the brand gives way to
+     the title, the one h1 here, which holds the brand itself. Matched as
+     the title's next sibling, which is where both layouts write the
+     brand block, so the brand inside the heading stays and a console
+     layout from before the heading moved into its bar keeps its bar's
+     brand. On the index a page has no main landmark, which is the
+     point: the page is navigation. */
+  .rst-shell-sidebar--index > .rst-shell__main, [rst-shell-sidebar~="index"] > [rst-shell-main], .rst-shell-sidebar--index > .rst-skip, [rst-shell-sidebar~="index"] > [rst-skip], .rst-shell-console--index > .rst-shell__main, [rst-shell-console~="index"] > [rst-shell-main], .rst-shell-console--index > .rst-skip, [rst-shell-console~="index"] > [rst-skip], .rst-shell-sidebar--index .rst-shell__title + .rst-shell__brand, [rst-shell-sidebar~="index"] [rst-shell-title] + [rst-shell-brand], .rst-shell-console--index .rst-shell__title + .rst-shell__brand, [rst-shell-console~="index"] [rst-shell-title] + [rst-shell-brand] { display: none; }
+  /* position: relative is for the profile menu, lifted from the foot to
+     the top of this rail (below). */
+  .rst-shell-sidebar--index > .rst-shell__rail, [rst-shell-sidebar~="index"] > [rst-shell-rail] { background: var(--rst-bg); border-block-end: 0; display: flex; gap: 0; min-block-size: 100dvh; padding: var(--rst-sp-5) var(--rst-sp-4); position: relative; }
+  /* The console's index is the bar, then the rail, then the foot. The
+     three share the window: the root is a column at least the window
+     tall and the rail takes what the bar and the foot leave, so a short
+     nav does not scroll at all. A rail a whole window tall made every
+     index scroll by the bar's and the foot's height, however short its
+     nav; a long nav still grows the rail and the page scrolls. The
+     console rail is already border-box. */
+  .rst-shell-console--index, [rst-shell-console~="index"] { display: flex; flex-direction: column; min-block-size: 100dvh; }
+  .rst-shell-console--index > .rst-shell__rail, [rst-shell-console~="index"] > [rst-shell-rail] { background: var(--rst-bg); border-block-end: 0; display: flex; flex: 1 0 auto; gap: 0; padding: var(--rst-sp-5) var(--rst-sp-4); }
+  /* The heading is the app's name in a header row, not a page title:
+     one line at about 21px, eliding rather than wrapping, the height of
+     the avatar beside it so the two centre on one line. The sidebar's
+     reserves the avatar's room at its inline end, since the avatar is
+     lifted over the rail rather than laid out beside it. */
+  .rst-shell-sidebar--index .rst-shell__title, [rst-shell-sidebar~="index"] [rst-shell-title], .rst-shell-console--index .rst-shell__title, [rst-shell-console~="index"] [rst-shell-title] { align-items: center; display: flex; font-size: 1.3125rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; margin: 0 0 var(--rst-sp-2); min-block-size: 2.75rem; min-inline-size: 0; padding-inline: 0.25rem; }
+  .rst-shell-sidebar--index .rst-shell__title, [rst-shell-sidebar~="index"] [rst-shell-title] { padding-inline-end: calc(2.75rem + var(--rst-sp-3)); }
+  .rst-shell-console--index .rst-shell__bar > .rst-shell__title, [rst-shell-console~="index"] [rst-shell-bar] > [rst-shell-title] { flex: 1 1 0; margin: 0; }
+  /* The rows: every link a full-width row, at least 3rem, 1rem text, a
+     chevron at the end. The grouping is the markup apps already write,
+     a group label and then its links: a run of rows is rounded at its
+     first link (the nav's first, or the one after a label) and its last
+     (the nav's last, or the one before a label). The :has() half is a
+     rule of its own, so an engine without :has() drops only it and a
+     run's last corner is square, which is cosmetic. aria-current is not
+     marked here: the index is its own page, where "current" is not
+     true. */
+  .rst-shell-sidebar--index .rst-shell__nav, [rst-shell-sidebar~="index"] [rst-shell-nav], .rst-shell-console--index .rst-shell__nav, [rst-shell-console~="index"] [rst-shell-nav] { gap: 0; }
+  .rst-shell-sidebar--index .rst-shell__nav > a, [rst-shell-sidebar~="index"] [rst-shell-nav] > a, .rst-shell-sidebar--index .rst-shell__nav > a[aria-current], [rst-shell-sidebar~="index"] [rst-shell-nav] > a[aria-current], .rst-shell-console--index .rst-shell__nav > a, [rst-shell-console~="index"] [rst-shell-nav] > a, .rst-shell-console--index .rst-shell__nav > a[aria-current], [rst-shell-console~="index"] [rst-shell-nav] > a[aria-current] { align-items: center; background: var(--rst-surface); border: 1px solid var(--rst-line); border-block-start-width: 0; border-radius: 0; box-sizing: border-box; color: var(--rst-text); display: flex; font-size: 1rem; font-weight: 450; gap: var(--rst-sp-3); min-block-size: 3rem; padding-block: 0; padding-inline: 1rem 0.75rem; }
+  .rst-shell-sidebar--index .rst-shell__nav > a:first-child, [rst-shell-sidebar~="index"] [rst-shell-nav] > a:first-child, .rst-shell-sidebar--index .rst-shell__nav > .rst-shell__group + a, [rst-shell-sidebar~="index"] [rst-shell-nav] > [rst-shell-group] + a, .rst-shell-console--index .rst-shell__nav > a:first-child, [rst-shell-console~="index"] [rst-shell-nav] > a:first-child, .rst-shell-console--index .rst-shell__nav > .rst-shell__group + a, [rst-shell-console~="index"] [rst-shell-nav] > [rst-shell-group] + a { border-block-start-width: 1px; border-start-end-radius: var(--rst-radius); border-start-start-radius: var(--rst-radius); }
+  .rst-shell-sidebar--index .rst-shell__nav > a:last-child, [rst-shell-sidebar~="index"] [rst-shell-nav] > a:last-child, .rst-shell-console--index .rst-shell__nav > a:last-child, [rst-shell-console~="index"] [rst-shell-nav] > a:last-child { border-end-end-radius: var(--rst-radius); border-end-start-radius: var(--rst-radius); }
+  .rst-shell-sidebar--index .rst-shell__nav > a:has(+ .rst-shell__group), [rst-shell-sidebar~="index"] [rst-shell-nav] > a:has(+ [rst-shell-group]), .rst-shell-console--index .rst-shell__nav > a:has(+ .rst-shell__group), [rst-shell-console~="index"] [rst-shell-nav] > a:has(+ [rst-shell-group]) { border-end-end-radius: var(--rst-radius); border-end-start-radius: var(--rst-radius); }
+  .rst-shell-sidebar--index .rst-shell__nav > a::after, [rst-shell-sidebar~="index"] [rst-shell-nav] > a::after, .rst-shell-console--index .rst-shell__nav > a::after, [rst-shell-console~="index"] [rst-shell-nav] > a::after { block-size: 0.5rem; border-right: 2px solid var(--rst-text-faint); border-top: 2px solid var(--rst-text-faint); content: ""; flex: none; inline-size: 0.5rem; margin-inline-start: auto; transform: rotate(45deg); }
+  [dir="rtl"] .rst-shell-sidebar--index .rst-shell__nav > a::after, [dir="rtl"] [rst-shell-sidebar~="index"] [rst-shell-nav] > a::after, [dir="rtl"] .rst-shell-console--index .rst-shell__nav > a::after, [dir="rtl"] [rst-shell-console~="index"] [rst-shell-nav] > a::after { transform: rotate(-135deg); }
+  .rst-shell-sidebar--index .rst-shell__nav > a:hover, [rst-shell-sidebar~="index"] [rst-shell-nav] > a:hover, .rst-shell-sidebar--index .rst-shell__nav > a:active, [rst-shell-sidebar~="index"] [rst-shell-nav] > a:active, .rst-shell-console--index .rst-shell__nav > a:hover, [rst-shell-console~="index"] [rst-shell-nav] > a:hover, .rst-shell-console--index .rst-shell__nav > a:active, [rst-shell-console~="index"] [rst-shell-nav] > a:active { background: var(--rst-accent-soft); }
+  .rst-shell-sidebar--index .rst-shell__nav > a:focus-visible, [rst-shell-sidebar~="index"] [rst-shell-nav] > a:focus-visible, .rst-shell-console--index .rst-shell__nav > a:focus-visible, [rst-shell-console~="index"] [rst-shell-nav] > a:focus-visible { outline: 2px solid var(--rst-accent); outline-offset: -2px; }
+  /* "You came from here": the back link points at #nav-<section>, and
+     that row flashes once as the index comes back. */
+  .rst-shell-sidebar--index .rst-shell__nav > a:target, [rst-shell-sidebar~="index"] [rst-shell-nav] > a:target, .rst-shell-console--index .rst-shell__nav > a:target, [rst-shell-console~="index"] [rst-shell-nav] > a:target { animation: rst-shell-flash 1.4s ease-out; }
+  .rst-shell-sidebar--index .rst-shell__group, [rst-shell-sidebar~="index"] [rst-shell-group], .rst-shell-console--index .rst-shell__group, [rst-shell-console~="index"] [rst-shell-group] { margin-block: var(--rst-sp-5) var(--rst-sp-2); padding-inline: 1rem; }
+  /* The foot FOLLOWS the nav on the index, by a fixed gap, never auto:
+     the rail has a min-height here, and an auto margin would float the
+     foot to the bottom of the screen, where the language menu would open
+     off it (the rail-foot comment above has the long version). */
+  .rst-shell-sidebar--index .rst-shell__rail-foot, [rst-shell-sidebar~="index"] [rst-shell-rail-foot] { margin-block-start: var(--rst-sp-6); }
+  /* ...unless it is the profile menu, which goes to the top inline-end
+     of the index, beside the heading, because the foot of a long index
+     is out of reach and the top is where a phone keeps the person. One
+     element moved, not a second copy: the blocks inside it are the
+     app's markup, ids and all. It stays last in the reading order,
+     after the sections, which are what the index is for. Gated on the
+     profile being there with :has(), so a layout from before the menu,
+     whose foot is two bare blocks, keeps its foot under the nav. Its
+     card drops down from the avatar by the anchored-menu rules as they
+     are, ending at the avatar's inline end. */
+  .rst-shell-sidebar--index .rst-shell__rail-foot:has(> .rst-shell__profile), [rst-shell-sidebar~="index"] [rst-shell-rail-foot]:has(> [rst-shell-profile]) { align-items: center; block-size: 2.75rem; flex-direction: row; inset-block-start: var(--rst-sp-5); inset-inline-end: var(--rst-sp-4); margin: 0; position: absolute; }
+  /* The console's Menu becomes the profile menu on its index: the
+     avatar instead of the icon and its word, a round button like the
+     sidebar's, and the card headed by the person's name. Its open state
+     keeps the card's pressed ring. */
+  .rst-shell-console--index .rst-shell__menu-label, [rst-shell-console~="index"] [rst-shell-menu-label] { display: none; }
+  .rst-shell-console--index .rst-shell__menu .rst-shell__avatar, [rst-shell-console~="index"] [rst-shell-menu] [rst-shell-avatar] { display: inline-flex; }
+  .rst-shell-console--index .rst-shell__menu > summary, [rst-shell-console~="index"] [rst-shell-menu] > summary { border-color: transparent; border-radius: 50%; justify-content: center; padding: 4px; }
+  .rst-shell-console--index .rst-shell__tail > .rst-shell__who, [rst-shell-console~="index"] [rst-shell-tail] > [rst-shell-who] { display: block; }
+  /* The account's links laid out flat in the index card, as the
+     sidebar's are: the Account summary goes and the closed menu's
+     content is shown, through ::details-content. An engine without it
+     keeps the Account menu, one tap deeper. */
+  @supports selector(::details-content) {
+    .rst-shell-console--index .rst-shell__tail > .rst-shell__account > summary, [rst-shell-console~="index"] [rst-shell-tail] > [rst-shell-account] > summary { display: none; }
+    .rst-shell-console--index .rst-shell__tail > .rst-shell__account::details-content, [rst-shell-console~="index"] [rst-shell-tail] > [rst-shell-account]::details-content { content-visibility: visible; }
+    .rst-shell-console--index .rst-shell__tail > .rst-shell__account > .rst-dropdown__menu, [rst-shell-console~="index"] [rst-shell-tail] > [rst-shell-account] > [rst-dropdown-menu] { padding-inline: 0; }
+  }
+}
+@keyframes rst-shell-flash { from { background: var(--rst-accent-soft); } }
+@media (prefers-reduced-motion: reduce) {
+  .rst-shell-sidebar--index .rst-shell__nav > a:target, [rst-shell-sidebar~="index"] [rst-shell-nav] > a:target, .rst-shell-console--index .rst-shell__nav > a:target, [rst-shell-console~="index"] [rst-shell-nav] > a:target { animation: none; }
+}
+
+/* ── rst-signin: the shipped sign-in card (partials/signin.html) ─────
+   Brand at the start and the way in at the end, side by side from 48rem
+   and stacked below it, so a phone reads the brand and then the door.
+   The card paints its own surface and border because it usually sits
+   on the stage shell's backdrop: whatever picture an app puts there,
+   the controls stay on a known ground and their contrast is the
+   theme's, not the picture's. The border is --rst-line-strong because
+   it is the card's only edge against that picture, and
+   ui/contrast_test.go holds it to 3:1 against the default art.
+   overflow-wrap on the door is for the one long string it shows back —
+   an address, which has no spaces to break at and would otherwise push
+   a 320px screen sideways. */
+.rst-signin, [rst-signin] { background: var(--rst-surface); border: 1px solid var(--rst-line-strong); border-radius: var(--rst-radius); box-shadow: var(--rst-shadow-pop); box-sizing: border-box; display: grid; gap: var(--rst-sp-5); inline-size: 100%; max-inline-size: 56rem; padding: var(--rst-sp-5); }
+@media (min-width: 48rem) {
+  .rst-signin, [rst-signin] { align-items: center; gap: var(--rst-sp-6); grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); padding: var(--rst-sp-6); }
+}
+/* The brand column reads mark, name, pitch. The pitch is the line the
+   column is for, so it is the largest type on the card, bigger than the
+   door's heading; the name above it is a label. A brand with no pitch
+   still has its name at label size: the door's heading already says
+   "Sign in to" that name. The mark takes the accent through
+   currentColor, so an inline SVG drawn in currentColor follows the
+   theme without colours of its own. */
+.rst-signin__brand, [rst-signin-brand] { display: flex; flex-direction: column; gap: var(--rst-sp-3); min-inline-size: 0; }
+.rst-signin__mark, [rst-signin-mark] { block-size: 3rem; color: var(--rst-accent); inline-size: 3rem; }
+.rst-signin__mark > *, [rst-signin-mark] > * { block-size: 100%; display: block; inline-size: 100%; }
+.rst-signin__name, [rst-signin-name] { color: var(--rst-text-muted); font-size: var(--rst-fs-lg); font-weight: 600; margin: 0; }
+.rst-signin__pitch, [rst-signin-pitch] { color: var(--rst-text); font-size: clamp(1.5rem, 1.2rem + 1vw, 2rem); font-weight: 650; letter-spacing: -0.02em; line-height: 1.2; margin: 0; text-wrap: balance; }
+.rst-signin__door, [rst-signin-door] { display: flex; flex-direction: column; gap: var(--rst-sp-4); min-inline-size: 0; overflow-wrap: anywhere; }
+.rst-signin__door h1, [rst-signin-door] h1 { color: var(--rst-text); font-size: 1.375rem; font-weight: 600; letter-spacing: -0.015em; line-height: 1.25; margin: 0; }
+.rst-signin__door > p, [rst-signin-door] > p { margin: 0; }
+/* The door spaces its children with gap; a callout's and a field's own
+   block margins would double it. */
+.rst-signin__door > .rst-callout, [rst-signin-door] > [rst-callout] { margin: 0; }
+.rst-signin__form, [rst-signin-form] { display: flex; flex-direction: column; gap: var(--rst-sp-3); margin: 0; }
+.rst-signin__form > .rst-field, [rst-signin-form] > [rst-field] { margin: 0; }
+.rst-signin__remembered, [rst-signin-remembered] { color: var(--rst-text-muted); margin: 0; }
+/* The passkey button and its message are one child of the door. The
+   message is a live region and must stay rendered, so it is never
+   display: none; it is only spaced from the button once it has
+   something to say. While the button is hidden — before the door's
+   script has found a working WebAuthn, or on a browser without one —
+   the whole pair is, so the door keeps no gap for a control nobody can
+   see; the region is back in the page before the button can be
+   pressed, which is all an announcement needs. The "or" between the
+   pair and the email form goes with them: beside a hidden button the
+   page has one way in, and an "or" would point at nothing. It is the
+   wrapper's immediate neighbour, before it on Ask and after it on a
+   remembered passkey, so one sibling selector each way reaches it. */
+.rst-signin__passkey, [rst-signin-passkey] { display: flex; flex-direction: column; }
+.rst-signin__passkey:has(> .rst-btn[hidden]), [rst-signin-passkey]:has(> [rst-btn][hidden]), .rst-signin__passkey:has(> .rst-btn[hidden]) + .rst-signin__or, [rst-signin-passkey]:has(> [rst-btn][hidden]) + [rst-signin-or], .rst-signin__or:has(+ .rst-signin__passkey > .rst-btn[hidden]), [rst-signin-or]:has(+ [rst-signin-passkey] > [rst-btn][hidden]) { display: none; }
+.rst-signin__passkey-msg, [rst-signin-passkey-msg] { color: var(--rst-text-muted); margin: 0; }
+.rst-signin__passkey-msg:not(:empty), [rst-signin-passkey-msg]:not(:empty) { margin-block-start: var(--rst-sp-2); }
+/* The word sits on a hairline drawn by its own ::before and ::after,
+   which carry no text, so a screen reader hears "or" in reading order
+   between the two ways in and nothing else. */
+.rst-signin__or, [rst-signin-or] { align-items: center; color: var(--rst-text-muted); display: flex; font-size: var(--rst-fs-sm); gap: var(--rst-sp-3); }
+.rst-signin__or::before, .rst-signin__or::after, [rst-signin-or]::before, [rst-signin-or]::after { border-block-start: 1px solid var(--rst-line); content: ""; flex: 1; }
+/* Provider buttons an app adds itself (Google, Apple, …), one form per
+   provider because each posts to its own route. Sibling forms carry no
+   spacing of their own, so without a wrapper the buttons touch and read
+   as one control split in half; the gap is the card form's, so the two
+   stacks read alike. The 44rem cap is rst-form's measure: stretched
+   past it a block button is a bar with a word in the middle. The forms'
+   margins are zeroed because an app's own `form { margin-bottom }` would
+   be added to the gap, the double spacing rst-form's rule exists to
+   stop. */
+.rst-signin__providers, [rst-signin-providers] { display: flex; flex-direction: column; gap: var(--rst-sp-3); max-inline-size: 44rem; }
+.rst-signin__providers > form, [rst-signin-providers] > form { margin: 0; }
+
+/* ── rst-stage: the stage shell (layouts/stage.html) ─────────────────
+   One card centred on a full-page backdrop. [rst-stage] is <body> in
+   the shell and a plain wrapper in the design-system gallery's frames,
+   so nothing here assumes which element carries it. The scene is
+   absolutely positioned inside it rather than fixed, so a page taller
+   than the window scrolls the picture with it instead of sliding the
+   card over a still image. The page column stacks its children and
+   centres each one, rather than laying them in a row: the card is
+   usually alone, but a line of text above or below it must not end up
+   beside it. inline-size: 100% because [rst-page]'s auto margins make
+   a grid item shrink to its content, and a card sized in percent would
+   shrink with it. */
+.rst-stage, [rst-stage] { box-sizing: border-box; display: grid; grid-template-rows: 1fr auto; isolation: isolate; min-block-size: 100dvh; position: relative; }
+.rst-stage > .rst-page, [rst-stage] > [rst-page] { align-items: center; align-self: center; display: flex; flex-direction: column; inline-size: 100%; position: relative; z-index: 1; }
+.rst-stage__scene, [rst-stage-scene] { inset: 0; overflow: hidden; pointer-events: none; position: absolute; z-index: 0; }
+.rst-stage__scene > *, [rst-stage-scene] > * { block-size: 100%; display: block; inline-size: 100%; object-fit: cover; }
+.rst-stage__foot, [rst-stage-foot] { color: var(--rst-text-muted); padding: var(--rst-sp-4); position: relative; text-align: center; z-index: 1; }
+/* The art's two colours: the line colour and a little accent, each
+   mixed into the page background, faint enough that the sign-in card's
+   border still clears 3:1 against them in every theme and scheme —
+   ui/contrast_test.go reads these two color-mix() calls and checks
+   exactly that. Lower the percentages rather than loosen the test.
+   non-scaling-stroke keeps the lines fine on a wide screen, where the
+   viewBox is scaled up to cover it. */
+.rst-stage-art__lines, [rst-stage-art-lines] { fill: none; stroke: color-mix(in srgb, var(--rst-line) 70%, var(--rst-bg)); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.rst-stage-art__glow, [rst-stage-art-glow] { fill: color-mix(in srgb, var(--rst-accent) 8%, var(--rst-bg)); fill-opacity: 0.2; }
+/* Forced colours would paint the lines in the system's text colour at
+   full strength, and a printout does not need a picture of waves. */
+@media (forced-colors: active) {
+  .rst-stage-art, [rst-stage-art] { display: none; }
+}
+@media print {
+  .rst-stage-art, [rst-stage-art] { display: none; }
+}
+
+/* error page — one centred column, whatever shell it lands in: the
+   status as a quiet label above the sentence, one or two ways out, and
+   the reference last, where an operator asked to quote it will find it.
+   Logical properties throughout, so an RTL locale mirrors it with no
+   second rule. */
+.rst-error, [rst-error] { margin-inline: auto; max-inline-size: 28rem; padding-block: 4rem var(--rst-sp-6); padding-inline: var(--rst-sp-4); text-align: center; }
+.rst-error__status, [rst-error-status] { color: var(--rst-text-faint); font-size: var(--rst-fs-xs); font-weight: 600; letter-spacing: 0.08em; margin: 0; }
+.rst-error__title, [rst-error-title] { color: var(--rst-text); font-size: 1.375rem; font-weight: 600; letter-spacing: -0.015em; line-height: 1.25; margin-block: var(--rst-sp-2) 0; }
+.rst-error__body, [rst-error-body] { color: var(--rst-text-muted); margin-block: var(--rst-sp-3) 0; }
+.rst-error__cta, [rst-error-cta] { display: flex; flex-wrap: wrap; gap: var(--rst-sp-2); justify-content: center; margin-block: var(--rst-sp-5) 0; }
+.rst-error__ref, [rst-error-ref] { color: var(--rst-text-faint); margin-block: 2rem 0; }
+
+/* ---------------------------------------------------------------------
+   Touch: the two zooms nobody asked for.
+
+   Mobile Safari zooms the whole page when it focuses a form control
+   whose text is under 16px. The touch step at the top of this file
+   makes body text 16px, but controls inherit their size and some sit in
+   a smaller parent, so every text-entry control still has a floor. It
+   is written twice, because one spelling cannot do both jobs:
+
+   - the component floors (.rst-input, .rst-textarea, the search input)
+     sit directly after the rule that resets each one's font, at that
+     rule's weight, and before any rule that sizes the field on purpose.
+     max(1rem, 1em) is the floor; 1em in font-size is the PARENT's size,
+     so a floor that came after the primary field's rule would shrink
+     it. That was a bug here once: a single floor sat
+     here, after [rst-input~="primary"] at equal weight, and turned the
+     17px primary field into 16px.
+   - the floor below, for an app's own input with no rst- attribute,
+     is wholly inside :where(): the UA stylesheet is what sizes such a
+     field, any author rule beats it, and any rule the app writes to size
+     its own field still wins.
+
+   rem rather than px so a reader who raised the browser default keeps
+   the increase. user-scalable=no in the viewport tag would buy the same
+   quiet by taking pinch-zoom from everyone, which fails WCAG 1.4.4.
+
+   Double-tap is the second zoom: tap a button or a row twice in quick
+   succession and the second tap lands as a zoom gesture rather than a
+   click. touch-action: manipulation drops that gesture on interactive
+   elements only, so panning and pinch-zoom are untouched, and so is
+   double-tapping prose or an image, which is a real way to read a
+   narrow column. :where() weighs nothing, so any rule can override it.
+   --------------------------------------------------------------------- */
+
+@media (pointer: coarse), (max-width: 40rem) {
+  :where(input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea) {
+    font-size: max(1rem, 1em);
+  }
+}
+
+:where(a[href], button, input, select, textarea, label, summary, [role="button"], [role="tab"], [role="option"]) {
+  touch-action: manipulation;
+}
+
+/* ── Tap targets on small or touch screens ──────────────────────────
+   Every interactive idiom is at least --rst-tap (44px) on both axes,
+   measured as the box a tap ACTIVATES: the label of a label-backed
+   control, the row of a stretched link. Anything that is display:
+   inline today becomes inline-flex or flex here, because min sizes do
+   nothing on an inline box. Each selector repeats the weight of the
+   rule it raises: a floor lighter than the size it raises loses
+   wherever it sits (the topbar's Menu summary is (0,2,1)).
+
+   The block is last before the utilities so it wins ties with every
+   component above it. ui/sizing_test.go fails when a rule styling an
+   a, button, summary or label arrives without a row in the inventory
+   this block implements, and ui/sizing_browser_test.go measures every
+   control at 390 and 1024 with a coarse pointer and at 600 with a
+   mouse. ─────────────────────────────────────────────────────────── */
+@media (pointer: coarse), (max-width: 40rem) {
+  :root { --rst-col-menu: var(--rst-tap); }
+
+  .rst-btn, [rst-btn] { justify-content: center; min-block-size: var(--rst-tap); min-inline-size: var(--rst-tap); }
+  /* min-inline-size for a field in a flex row (a bulk bar), which
+     shrinks it past the floor; a stretched field is far wider anyway. */
+  .rst-input, [rst-input], .rst-textarea, [rst-textarea] { min-block-size: var(--rst-tap); min-inline-size: var(--rst-tap); }
+  /* The box is the target, and so is the input inside it: a tap focuses
+     the input, so the input stretches to the box's full height. */
+  .rst-search, [rst-search] { min-block-size: var(--rst-tap); padding-block: 0; }
+  .rst-search input[type="search"], [rst-search] input[type="search"] { align-self: stretch; }
+  .rst-search__clear, [rst-search-clear] { min-block-size: var(--rst-tap); min-inline-size: var(--rst-tap); }
+  .rst-ftok a, [rst-ftok] a { block-size: var(--rst-tap); inline-size: var(--rst-tap); }
+  .rst-help, [rst-help] { block-size: var(--rst-tap); inline-size: var(--rst-tap); }
+
+  .rst-dropdown > summary, [rst-dropdown] > summary { align-items: center; min-block-size: var(--rst-tap); min-inline-size: var(--rst-tap); }
+  .rst-dropdown__menu .rst-menu-group > summary, [rst-dropdown-menu] [rst-menu-group] > summary { align-items: center; display: flex; min-block-size: var(--rst-tap); }
+  .rst-dropdown__menu a, [rst-dropdown-menu] a, .rst-dropdown__menu button, [rst-dropdown-menu] button, .rst-row-menu__panel a, [rst-row-menu-panel] a, .rst-row-menu__panel button, [rst-row-menu-panel] button, .rst-locale button, [rst-locale] button { align-items: center; box-sizing: border-box; display: flex; min-block-size: var(--rst-tap); }
+  /* The menu cap's 8rem floor exists so a three-item menu opened in a
+     short frame shows whole; three 44px rows are taller than 8rem, so
+     here the floor is three taps plus the panel's padding and border
+     (ui's TestAMenuOpenedInsideAShortFrameIsStillUsable). border-box
+     above for the same reason: the dropdown's links were content-box,
+     and their padding made each row 57px instead of 44. */
+  .rst-dropdown__menu, [rst-dropdown-menu], .rst-row-menu__panel, [rst-row-menu-panel] { max-block-size: min(20rem, max(calc(100dvh - 6rem), calc(3 * var(--rst-tap) + 1rem))); }
+  .rst-combo__option, [rst-combo-option], .rst-dtp__row, [rst-dtp-row] { align-items: center; box-sizing: border-box; display: flex; min-block-size: var(--rst-tap); }
+
+  /* The date field: a 44px pick button, and room in the input so typed
+     text never runs under it. */
+  .rst-dtp__input, [rst-dtp-input] { padding-inline-end: 3rem; }
+  .rst-dtp__pick, [rst-dtp-pick] { block-size: var(--rst-tap); inline-size: var(--rst-tap); inset-inline-end: 0; }
+  .rst-cal__nav, [rst-cal-nav] { block-size: var(--rst-tap); inline-size: var(--rst-tap); }
+  .rst-cal__day, [rst-cal-day] { block-size: var(--rst-tap); }
+  /* The calendar docks to the bottom of the viewport on every small or
+     touch screen. Anchored, it is placed from the field's inline start,
+     and a date field can sit at the trailing end of a field row at any
+     width; docked, it is always inside the viewport. The grid asks for
+     seven taps and the panel is fit-content around it, with the
+     scrollbar gutter reserved, so a classic scrollbar widens the PANEL
+     and never narrows the DAYS. Both max sizes clamp to the viewport:
+     below a 342px viewport the days narrow to about 41px and stay 44px
+     tall, a deliberate exception to the 44px target, because seven full
+     days and the panel's padding do not fit a narrower screen. The
+     height cap is why the panel scrolls itself: six weeks of 44px rows
+     are taller than a phone in landscape, and a fixed panel's clipped
+     top cannot be reached by scrolling the page. top: auto because the
+     base rule's physical top: 100% would otherwise be measured against
+     the viewport; the block-start inset and the margins reset because
+     .is-above sets them (the :is() weighs (0,3,0) and beats it). */
+  :is(.rst-cal, .rst-dtp .rst-cal, .rst-dtp.is-above .rst-cal), :is([rst-cal], [rst-dtp] [rst-cal], [rst-dtp].is-above [rst-cal]) { box-sizing: border-box; inline-size: fit-content; inset-block-end: var(--rst-sp-2); inset-block-start: auto; inset-inline: 0; margin: 0 auto; max-block-size: calc(100dvh - 2 * var(--rst-sp-2)); max-inline-size: calc(100vw - 2 * var(--rst-sp-2)); overflow-y: auto; overscroll-behavior: contain; position: fixed; scrollbar-gutter: stable; top: auto; }
+  :is(.rst-cal, .rst-dtp .rst-cal) .rst-cal__grid, :is([rst-cal], [rst-dtp] [rst-cal]) [rst-cal-grid] { inline-size: calc(7 * var(--rst-tap)); max-inline-size: 100%; }
+
+  /* The row's own controls. The checkbox's label grows by
+     padding, so the 16px box stays 16px and the label is 44×44. */
+  .rst-row__action, [rst-row-action] { align-items: center; box-sizing: border-box; display: inline-flex; justify-content: center; min-block-size: var(--rst-tap); min-inline-size: var(--rst-tap); padding-inline: 1rem; }
+  .rst-row-menu > summary, [rst-row-menu] > summary { block-size: var(--rst-tap); inline-size: var(--rst-tap); }
+  .rst-selbox, [rst-selbox] { box-sizing: border-box; justify-content: center; min-block-size: var(--rst-tap); min-inline-size: var(--rst-tap); padding: 0; }
+  .rst-lrow > .rst-nm, [rst-lrow] > .rst-nm { align-content: center; display: grid; min-block-size: var(--rst-tap); }
+  a.rst-person, a[rst-person] { min-block-size: var(--rst-tap); min-inline-size: var(--rst-tap); }
+
+  .rst-pagination a, [rst-pagination] a, .rst-pagination span, [rst-pagination] span { align-items: center; box-sizing: border-box; display: inline-flex; justify-content: center; min-block-size: var(--rst-tap); min-inline-size: var(--rst-tap); }
+  .rst-seg-tabs a, [rst-seg-tabs] a { align-items: center; box-sizing: border-box; display: inline-flex; justify-content: center; min-block-size: var(--rst-tap); min-inline-size: var(--rst-tap); }
+  .rst-switch, [rst-switch], .rst-choice__cards label, [rst-choice-cards] label, .rst-tblock > .rst-tblock__head, [rst-tblock] > [rst-tblock-head] { min-block-size: var(--rst-tap); }
+
+  /* flex: none because the bar is a flex row that, at 390, shrank the
+     close link to 26px wide to make room for the escalate link's text. */
+  .rst-bulkbar__close, [rst-bulkbar-close] { block-size: var(--rst-tap); flex: none; inline-size: var(--rst-tap); }
+  .rst-bulkbar__escalate, [rst-bulkbar-escalate] { align-items: center; display: inline-flex; justify-content: center; min-block-size: var(--rst-tap); min-inline-size: var(--rst-tap); }
+  .rst-modal-close, [rst-modal-close] { align-items: center; display: inline-flex; justify-content: center; min-block-size: var(--rst-tap); min-inline-size: var(--rst-tap); }
+  .rst-modal-panel > nav a, [rst-modal-panel] > nav a { align-items: center; display: flex; min-block-size: var(--rst-tap); }
+  .rst-back-nav a, [rst-back-nav] a { align-items: center; display: inline-flex; min-block-size: var(--rst-tap); min-inline-size: var(--rst-tap); }
+
+  .rst-shell__brand, [rst-shell-brand] { align-items: center; display: inline-flex; min-block-size: var(--rst-tap); min-inline-size: var(--rst-tap); }
+  .rst-shell-topbar .rst-shell__nav a, [rst-shell-topbar] [rst-shell-nav] a, .rst-shell-sidebar .rst-shell__nav a, [rst-shell-sidebar] [rst-shell-nav] a, .rst-shell-console .rst-shell__nav a, [rst-shell-console] [rst-shell-nav] a { align-items: center; box-sizing: border-box; display: flex; min-block-size: var(--rst-tap); }
+  .rst-shell-topbar .rst-shell__menu > summary, [rst-shell-topbar] [rst-shell-menu] > summary, .rst-shell-console .rst-shell__menu > summary, [rst-shell-console] [rst-shell-menu] > summary { min-block-size: var(--rst-tap); min-inline-size: var(--rst-tap); }
+  /* LEGACY: the old drawer's summary. */
+  .rst-shell-sidebar > .rst-shell__chrome > summary, [rst-shell-sidebar] > [rst-shell-chrome] > summary { min-block-size: var(--rst-tap); }
+  /* The card's own summaries: the open Menu (its pressed state is a
+     (0,3,1) rule) and the account menu inside it. */
+  .rst-shell-topbar .rst-shell__menu[open] > summary, [rst-shell-topbar] [rst-shell-menu][open] > summary, .rst-shell-console--page .rst-shell__menu[open] > summary, .rst-shell-console--index .rst-shell__menu[open] > summary, [rst-shell-console~="page"] [rst-shell-menu][open] > summary, [rst-shell-console~="index"] [rst-shell-menu][open] > summary { min-block-size: var(--rst-tap); min-inline-size: var(--rst-tap); }
+  .rst-shell-topbar .rst-shell__tail > .rst-shell__account > summary, [rst-shell-topbar] [rst-shell-tail] > [rst-shell-account] > summary, .rst-shell-console--page .rst-shell__tail > .rst-shell__account > summary, .rst-shell-console--index .rst-shell__tail > .rst-shell__account > summary, [rst-shell-console~="page"] [rst-shell-tail] > [rst-shell-account] > summary, [rst-shell-console~="index"] [rst-shell-tail] > [rst-shell-account] > summary { min-block-size: var(--rst-tap); }
+  /* The back control (its strip is 2.75rem already; the link is the
+     target) and the index rows, which are 3rem: the nav-link floor above
+     weighs the same as the index's row rule and comes later, so without
+     this it would shrink the rows to 44px on exactly the screens the
+     index is for. */
+  .rst-shell__back > a, [rst-shell-back] > a { min-inline-size: var(--rst-tap); }
+  .rst-shell-sidebar--index .rst-shell__nav > a, [rst-shell-sidebar~="index"] [rst-shell-nav] > a, .rst-shell-console--index .rst-shell__nav > a, [rst-shell-console~="index"] [rst-shell-nav] > a { min-block-size: 3rem; }
+}
+
+/* ---------------------------------------------------------------------
+   Utilities, last on purpose.
+
+   .rst-sr-only competes with component rules of the same specificity —
+   both are single class selectors — so the cascade falls to source
+   order. Declared earlier it LOSES: .rst-input's width:100% beat its
+   inline-size:1px. Keep this block at the end of the file so the utility
+   wins wherever it is applied; a test asserts it stays here.
+
+   What that does NOT buy: a replaced element such as <select> has an
+   intrinsic minimum size, so inline-size:1px does not shrink it to 1px
+   whoever wins — measured at ~21px in Chromium. clip-path is what
+   actually hides these, and position:absolute is what keeps them out of
+   flow. Code that wants a genuinely minimal box (select.js does) should
+   drop the component class rather than rely on this.
+   --------------------------------------------------------------------- */
+
+/* Visually hidden, but in the DOM and the tab order — and it un-hides on
+   keyboard focus, because a focused control a sighted keyboard user
+   cannot see is a trap. */
+.rst-sr-only {
+  clip-path: inset(50%);
+  block-size: 1px;
+  inline-size: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+}
+.rst-sr-only:focus-visible {
+  background: var(--rst-accent);
+  border: 0;
+  border-radius: var(--rst-radius-sm);
+  block-size: auto;
+  clip-path: none;
+  color: var(--rst-on-accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--rst-fs-sm);
+  inline-size: auto;
+  overflow: visible;
+  padding: 0.3rem 0.6rem;
+  position: static;
+  white-space: normal;
+}

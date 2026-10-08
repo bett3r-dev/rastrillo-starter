@@ -1,0 +1,84 @@
+{{define "layout"}}<!doctype html>
+<html lang="{{block "lang" .}}en{{end}}" dir="{{block "dir" .}}ltr{{end}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>{{block "title" .}}Hello{{end}}</title>
+<link rel="stylesheet" href="{{asset "static/tokens.css"}}">
+<link rel="stylesheet" href="{{asset "static/theme.css"}}">
+<script defer src="{{asset "static/rastrillo.js"}}"></script>
+<script defer src="{{asset "static/busy.js"}}"></script>
+{{iconAssets}}
+<script defer src="{{asset "static/select.js"}}"></script>
+<script defer src="{{asset "static/calendar.js"}}"></script>
+<script defer src="{{asset "static/datetime.js"}}"></script>
+{{/* head is the app's own slot in <head>: a favicon, a meta tag, one
+     more stylesheet. Empty by default, last in the head so an app's
+     own CSS wins over the framework's, and the only block in the
+     three shells that is not chrome. */}}
+{{block "head" .}}{{end}}
+</head>
+<body>
+<div rst-shell-topbar>
+<a rst-skip href="#main">{{T "rastrillo.ui.shell_skip"}}</a>
+<header rst-shell-bar>
+{{block "brand" .}}<a rst-shell-brand href="/">{{T "rastrillo.ui.shell_home"}}</a>{{end}}
+{{/* The narrow layout. Below 800px the bar's tail — nav, account,
+     locale — hides behind this disclosure; above it, tokens.css hides
+     the summary and gives [rst-shell-tail] display: contents, so the
+     three blocks generate no box of their own and lay out as flex
+     items of the bar, exactly as they did before this element existed.
+     Laid out as direct children, not made into them: see the depth
+     note at the foot of this comment. Below 800px the open tail is a
+     card over the page (tokens.css) that closes on an outside tap,
+     scripts or not, and on Escape through rastrillo.js; the sidebar has
+     no such control, its phone navigation is an index page.
+
+     name="rst-shell-menu" — a group of its own, and NOT rst-menus,
+     which is exactly the group this must not join. <details name>
+     exclusivity is document-wide, so a disclosure in the menus' group
+     would be closed by the account menu it just revealed: on a phone,
+     opening the account would take the navigation away with it. Two
+     gates hold the name (TestEveryMenuDefaultsToTheSharedExclusivityGroup
+     reads it off the layout, and the browser drive opens the account
+     menu inside the collapsed tail and asserts this is still open), so
+     read this paragraph as the reason for them rather than as advice
+     to change the attribute below.
+
+     The tail is also a SIBLING rather than this element's content: a
+     closed <details> hides its own content, and the wide layout cannot
+     be recovered from inside one.
+
+     The three block names below are unchanged — nav, account, locale.
+     Apps override them, and that contract is gated. What DID change is
+     depth: nav, account and locale are now grandchildren of
+     [rst-shell-bar] through [rst-shell-tail]. display: contents gives
+     their boxes back above 800px; it does not give the selector back,
+     so an app stylesheet or script written as
+     `[rst-shell-bar] > [rst-shell-nav]` stops matching at every width.
+     Use a descendant selector, or target [rst-shell-nav] directly.
+     docs/site/templates.md says the same thing where an upgrader will
+     meet it. */}}
+<details rst-shell-menu name="rst-shell-menu"><summary>{{icon "menu"}}{{T "rastrillo.ui.shell_menu"}}</summary></details>
+<div rst-shell-tail>
+<nav rst-shell-nav>{{block "nav" .}}{{end}}</nav>
+<details rst-dropdown rst-shell-account name="rst-menus">
+<summary>{{T "rastrillo.ui.shell_account"}}<span rst-caret aria-hidden="true">{{icon "chevron-down"}}</span></summary>
+{{/* account here is the dropdown's MENU BODY, not the whole menu: the
+     layout owns the details/summary, so an override supplies only the
+     links that sit inside [rst-dropdown-menu]. Sidebar's account block
+     is the other shape — a bare slot in the rail — so moving a block
+     between the two shells needs an edit. */}}
+<div rst-dropdown-menu>{{block "account" .}}{{end}}</div>
+</details>
+{{block "locale" .}}{{end}}
+</div>
+</header>
+<main rst-page id="main">
+{{template "content" .}}
+</main>
+<footer rst-shell-foot>{{block "foot" .}}{{end}}</footer>
+</div>
+</body>
+</html>
+{{end}}

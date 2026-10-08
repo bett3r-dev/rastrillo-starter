@@ -1,0 +1,8 @@
+# Build output. make release writes here; nothing in it is source.
+/releases/
+
+# The local SQLite database the app creates when you run it, and its
+# write-ahead log. Real data lives on the platform, never in the repo.
+/myapp.db
+/myapp.db-wal
+/myapp.db-shm

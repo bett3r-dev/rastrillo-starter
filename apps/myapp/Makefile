@@ -1,0 +1,200 @@
+APP := myapp
+
+# The gate and the release run on one named Go, not whichever release this
+# machine has. govulncheck judges the standard library of the Go doing the
+# scan, and make release builds the binary you ship with it, so a patch
+# release behind is both a red gate and an unpatched binary. go fetches
+# this release through the module proxy on first use. It is the Go
+# rastrillo's own gate runs; raise it with each Go security release.
+#
+# A plain =, not ?=: Go's container images set GOTOOLCHAIN=local, and ?=
+# would quietly keep whatever Go they ship. To override for one run:
+#   make ci GOTOOLCHAIN=local
+export GOTOOLCHAIN = go1.26.6
+
+# What `carlos ship -target` defaults to, and therefore what a release
+# must be built for. Building for your own machine and shipping that is a
+# silent architecture mismatch: the binary uploads fine and fails to exec
+# on the instance. Override for a one-off:
+#   make release RELEASE_GOARCH=amd64
+RELEASE_GOOS   ?= linux
+RELEASE_GOARCH ?= arm64
+RELEASE_BIN := releases/$(APP)-$(RELEASE_GOOS)-$(RELEASE_GOARCH)
+
+# What the running binary reports from GET /api/version. The platform's
+# deploy verification polls that endpoint on every instance socket and
+# compares what it finds against the release it believes it adopted; an
+# unstamped binary answers "dev" from every build you have ever made, so
+# those two facts can never disagree and a process that was never
+# recycled onto the new release verifies green. Stamping this is what
+# gives that check the ability to fail.
+#
+# git describe, because the tag is what you ship against. Outside a
+# repository, or before the first commit, name it yourself:
+#   make release VERSION=v0.1.0
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null)
+
+# One target at a time, even under make -j: the perf lane measures time,
+# and a suite running beside it would be measured too.
+.NOTPARALLEL:
+
+.PHONY: build release version-check test vet fmt-check staticcheck govulncheck gitleaks budget perf migration-check ci
+
+RASTRILLO := go run amadan.net/rastrillo/rastrillo/cmd/rastrillo
+
+# build is the compile check: with more than one package matched, go
+# build discards the output, so this catches a broken package without
+# producing an artifact.
+build:
+	CGO_ENABLED=0 go build ./...
+
+# release is what ships. -s -w drops the symbol table and DWARF, which on
+# this family's apps is 23-31% off the binary and 45-53% off the
+# compressed artifact — and compressed size is what actually gets
+# transferred. carlos is built the same way (see platform's Makefile).
+#
+# What survives: panic traces keep their function names AND line numbers
+# (Go's pclntab is untouched by these flags), debug.ReadBuildInfo works,
+# and go version -m still reports module metadata. What you lose is
+# source-level debugging with delve or gdb — build without the flags for
+# that. rastrillo dev never strips, for the same reason.
+release: version-check
+	@mkdir -p releases
+	CGO_ENABLED=0 GOOS=$(RELEASE_GOOS) GOARCH=$(RELEASE_GOARCH) \
+		go build -ldflags="-s -w -X 'amadan.net/rastrillo/rastrillo.BuildVersion=$(VERSION)'" \
+		-o $(RELEASE_BIN) ./cmd/$(APP)
+	@echo
+	@echo "built $(RELEASE_BIN) reporting version $(VERSION)"
+	@echo "ship it with:"
+	@echo "  carlos ship -app $(APP) -target $(RELEASE_GOOS)-$(RELEASE_GOARCH) $(RELEASE_BIN)"
+
+# version-check refuses rather than letting release ship a binary whose
+# version is untrue. Both refusals are about the same thing: /api/version
+# is only evidence if the answer identifies one artifact.
+#
+# An empty stamp is worse than the "dev" default, because "dev" is
+# saying something true about itself and "" looks like a value that
+# arrived from somewhere.
+#
+# A dirty tree is refused rather than suffixed. A -dirty stamp names a
+# commit plus changes nobody can name, so two different binaries can
+# carry the identical string — which does not fix the check, it makes
+# it look reliable while it is not, and that is the more expensive
+# failure. Refusing costs one `git stash`; a wrong stamp ships. If you
+# mean to ship uncommitted work, say so out loud:
+#   make release VERSION=v0.1.0-wip
+version-check:
+	@if [ -z "$(VERSION)" ]; then \
+		echo "make release: no version to stamp."; \
+		echo "  git describe found nothing here: no repository, or no commit yet."; \
+		echo "  Commit, or name it:  make release VERSION=v0.1.0"; \
+		exit 1; \
+	fi
+	@case "$(VERSION)" in *-dirty) \
+		echo "make release: the tree is dirty, so $(VERSION) does not name what you are about to ship."; \
+		echo "  Commit or stash first, or name it:  make release VERSION=v0.1.0-wip"; \
+		exit 1;; \
+	esac
+
+# budget size holds each directory to 5,000 source and 8,000 test lines.
+# Past that, split by feature (docs/site/testing.md); a record in
+# .rastrillo/budgets.txt with a reason is the exception, not the fix.
+budget:
+	$(RASTRILLO) budget size
+
+# budget test runs go test itself, so its exit status survives, and holds
+# each package to 10s using the time budget.Main prints in the package's
+# TestMain, cached runs included. Timing fails only on CI (AMADAN_CI or
+# CI set); here it reports.
+test:
+	$(RASTRILLO) budget test ./...
+
+# The perf lane: every GET screen at 150ms to first byte, cold boot at
+# 500ms. Serial (-p 1 -parallel 1) and uncached (-count=1), because a
+# measurement taken beside other work, or replayed from a cache, is not
+# one. -require fails the lane if the perf tests did not both run.
+perf:
+	$(RASTRILLO) budget test -no-time -require TestPerfScreens,TestPerfBoot -tags perf -count=1 -p 1 -parallel 1 -run '^TestPerf' ./...
+
+vet:
+	go vet ./...
+
+fmt-check:
+	@out=$$(gofmt -l .); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
+
+# staticcheck catches what vet does not: deprecated APIs, values that are
+# never read, a &*x that looks like a copy and is not.
+#
+# go run with a version, not a tool directive in go.mod. A tool's
+# requirements join the app's own module graph and can move the versions
+# of modules the app shares with it (golang.org/x/tools, which sqlc also
+# needs); go run resolves the tool in a graph of its own. The version is
+# the one rastrillo's own gate runs. Bump it when you raise the go
+# directive: a staticcheck older than your Go does not know that
+# release's deprecations, and says nothing.
+#
+# -tags browser,perf so the browser drive and the perf tests are read
+# too; no file is left out by them, so it covers everything the plain
+# build does.
+STATICCHECK := honnef.co/go/tools/cmd/staticcheck@v0.7.0
+# staticcheck keeps its cache in the user cache directory, ~/.cache,
+# which a sandboxed CI runner mounts read-only: "failed to initialize
+# build cache ... read-only file system". Where the runner hands the job
+# an absolute GOCACHE, staticcheck's goes inside it: writable wherever
+# Go's is, and evicted with it. Anywhere else it stays where staticcheck
+# puts it. Not beside it: a writable GOCACHE says nothing about its
+# parent.
+ifneq ($(filter /%,$(firstword $(GOCACHE))),)
+export STATICCHECK_CACHE ?= $(GOCACHE)/staticcheck
+endif
+
+staticcheck:
+	go run $(STATICCHECK) -tags browser,perf ./...
+
+# govulncheck reports only the vulnerabilities your code can reach: a call
+# path, not a module that merely sits in go.sum. It reads the live
+# vulnerability database, so it can go red with no change here, which is
+# the point of running it on every push. A module finding is fixed by
+# raising that requirement in go.mod; a standard-library one by raising
+# GOTOOLCHAIN above.
+GOVULNCHECK := golang.org/x/vuln/cmd/govulncheck@v1.8.0
+govulncheck:
+	go run $(GOVULNCHECK) ./...
+
+# gitleaks scans every commit, not just the files you have now: a key that
+# was committed and then deleted is still in every clone. It only scans
+# when this directory is the root of its own repository. Before git init
+# there is nothing committed, and an app scaffolded inside somebody else's
+# checkout must not scan theirs. --redact keeps a finding out of CI logs.
+GITLEAKS := github.com/zricethezav/gitleaks/v8@v8.30.1
+gitleaks:
+	@if [ "$$(git rev-parse --is-inside-work-tree 2>/dev/null)" = true ] && [ -z "$$(git rev-parse --show-prefix)" ]; then \
+		go run $(GITLEAKS) git --no-banner --redact .; \
+	else \
+		echo "gitleaks: this directory is not the root of a git repository, so there is nothing committed to scan"; \
+	fi
+
+# A step of its own, not folded into another target's recipe: ci.d/
+# steps each exec one make target, so migration-check needs its own
+# name to get its own reported step on a runner with step support.
+#
+# go run, not a bare "rastrillo": go.mod already requires rastrillo, so
+# this needs nothing on PATH but the Go toolchain, and works offline
+# after go mod download. A bare "rastrillo migration check" failed a
+# fresh clone's very first CI run with "make: rastrillo: Command not
+# found", and nothing in the scaffold said what to install.
+#
+# What makes the go run resolve is the tool directive at the foot of
+# go.mod — it is what keeps the CLI's own dependencies in go.sum. See
+# the comment there before removing it.
+migration-check:
+	go run amadan.net/rastrillo/rastrillo/cmd/rastrillo migration check
+
+# ci is the one gate: what a runner executes and what you run before
+# pushing are the same definition. amadan's runner falls back to this
+# target when .amadan/ci is absent; ci.d/ carries the same targets,
+# reported one by one, for a runner with step support. migration-check
+# fails the build the moment models.go and migrations/ disagree,
+# instead of at boot on whatever machine notices next. If the app
+# declares manifest resources, also add: rastrillo generate --check
+ci: vet fmt-check staticcheck govulncheck gitleaks budget test perf migration-check

@@ -1,0 +1,187 @@
+/* day — rastrillo's default theme: an everyday blue on white and grey.
+   Structure lives in tokens.css; this file is colour, type and shape.
+   rastrillo new writes it once as static/theme.css.
+
+   The look: the ordinary, personable interface. A white page, a plain
+   grey text scale, one friendly blue that means "this does something",
+   and the conventional green/amber/red for status. Nothing here is
+   trying to be memorable — day is the theme an app ships on while it
+   works out what it wants to look like, and the one that never gets in
+   the way of the content. Semantic status colours are functional and
+   never the accent, so a pill can never be mistaken for a link.
+
+   ── One block, both schemes ───────────────────────────────────────────
+   Every token is declared once, as light-dark(<light>, <dark>), under a
+   single :root that sets color-scheme: light dark. The browser picks the
+   half that matches the resolved scheme, so there is no second copy of
+   the palette to keep in sync and no way to author dark half-done. The
+   two rules at the bottom are the whole toggle: setting color-scheme on
+   :root[data-theme=…] re-resolves every light-dark() in the file at
+   once, in both directions, which is why an explicit choice beats the OS
+   without restating a single colour.
+
+   Tokens with one value in both schemes — the font stack, the radii —
+   are written plain, because light-dark(x, x) says nothing twice.
+
+   light-dark() is a colour function: it may only stand where a <color>
+   is expected. So a shadow token wraps its colour in it and writes the
+   geometry once, outside the call — `0 8px 24px light-dark(a, b)`, never
+   `light-dark(0 8px 24px a, …)`, which no browser would accept as a
+   box-shadow.
+
+   ── The shape axis ────────────────────────────────────────────────────
+   Radius and shadow are the theme's now, not tokens.css's: a theme that
+   can only change colour cannot change how an app feels. day is soft and
+   unremarkable — 8px cards, 6px controls, shadows with a wide blur and
+   little alpha, the depth of paper resting on paper.
+
+   ── WCAG 2.2 AA, measured ─────────────────────────────────────────────
+   Normal text needs 4.5:1; large text and UI component boundaries need
+   3:1. Every pair below was computed from these exact hex values, in
+   both schemes. If you change a token, recompute its rows.
+
+   LIGHT                                     ratio      requirement
+     --rst-text        on --rst-surface       16.91      4.5:1  text
+     --rst-text        on --rst-bg            16.91      4.5:1  text
+     --rst-text        on --rst-surface-2     15.77      4.5:1  text
+     --rst-text        on --rst-accent-soft   15.21      4.5:1  text
+     --rst-text-muted  on --rst-surface        7.56      4.5:1  text
+     --rst-text-muted  on --rst-bg             7.56      4.5:1  text
+     --rst-text-muted  on --rst-surface-2      7.05      4.5:1  text
+     --rst-text-muted  on --rst-accent-soft    6.80      4.5:1  text
+     --rst-text-faint  on --rst-surface        5.29      4.5:1  text
+     --rst-text-faint  on --rst-bg             5.29      4.5:1  text
+     --rst-text-faint  on --rst-surface-2      4.93      4.5:1  text
+     --rst-text-faint  on --rst-accent-soft    4.76      4.5:1  text
+     --rst-accent      on --rst-surface        5.28      4.5:1  text + focus ring
+     --rst-accent      on --rst-bg             5.28      4.5:1  text + focus ring
+     --rst-accent      on --rst-surface-2      4.93      4.5:1  text
+     --rst-accent      on --rst-accent-soft    4.75      4.5:1  text
+     --rst-on-accent   on --rst-accent         5.28      4.5:1  button label
+     --rst-on-accent   on --rst-accent-strong  7.18      4.5:1  button label, hover
+     --rst-line-strong on --rst-surface        3.63      3:1    control border
+     --rst-line-strong on --rst-bg             3.63      3:1    control border
+     --rst-line-strong on --rst-surface-2      3.39      3:1    control border
+     pill neutral  fg on its own tint          9.02      4.5:1  text
+     pill positive fg on its own tint          6.49      4.5:1  text
+     pill warning  fg on its own tint          6.15      4.5:1  text
+     pill negative fg on its own tint          5.30      4.5:1  text
+     --rst-on-accent   on negative fg (fill)   6.47      4.5:1  danger button label
+
+   DARK                                      ratio      requirement
+     --rst-text        on --rst-surface       13.74      4.5:1  text
+     --rst-text        on --rst-bg            15.32      4.5:1  text
+     --rst-text        on --rst-surface-2     14.63      4.5:1  text
+     --rst-text        on --rst-accent-soft   13.02      4.5:1  text
+     --rst-text-muted  on --rst-surface        7.56      4.5:1  text
+     --rst-text-muted  on --rst-bg             8.43      4.5:1  text
+     --rst-text-muted  on --rst-surface-2      8.05      4.5:1  text
+     --rst-text-muted  on --rst-accent-soft    7.16      4.5:1  text
+     --rst-text-faint  on --rst-surface        6.33      4.5:1  text
+     --rst-text-faint  on --rst-bg             7.06      4.5:1  text
+     --rst-text-faint  on --rst-surface-2      6.74      4.5:1  text
+     --rst-text-faint  on --rst-accent-soft    6.00      4.5:1  text
+     --rst-accent      on --rst-surface        6.95      4.5:1  text + focus ring
+     --rst-accent      on --rst-bg             7.75      4.5:1  text + focus ring
+     --rst-accent      on --rst-surface-2      7.40      4.5:1  text
+     --rst-accent      on --rst-accent-soft    6.59      4.5:1  text
+     --rst-on-accent   on --rst-accent         7.86      4.5:1  button label
+     --rst-on-accent   on --rst-accent-strong 10.29      4.5:1  button label, hover
+     --rst-line-strong on --rst-surface        4.26      3:1    control border
+     --rst-line-strong on --rst-bg             4.75      3:1    control border
+     --rst-line-strong on --rst-surface-2      4.53      3:1    control border
+     pill neutral  fg on its own tint          8.44      4.5:1  text
+     pill positive fg on its own tint         10.18      4.5:1  text
+     pill warning  fg on its own tint          9.62      4.5:1  text
+     pill negative fg on its own tint          7.85      4.5:1  text
+     --rst-on-accent   on negative fg (fill)   8.99      4.5:1  danger button label
+
+   The tightest pair in the set is --rst-accent on --rst-accent-soft in
+   light, at 4.75:1 against a 4.5:1 floor. Put a token on a surface not
+   listed above and you are guessing; recompute first.
+
+   --rst-line is a hairline divider between rows, not a control border or
+   a meaningful graphic, so 1.4.11's 3:1 does not apply to it. Control
+   borders use --rst-line-strong, which does clear 3:1.
+
+   --rst-header-rule is not in the table either, and deliberately so
+   (design doc §6-v2.2): the page header's rule is decoration, not
+   structure — the heading's size, weight and spacing carry the
+   structure — so no contrast floor applies to it and it is not in
+   ui/contrast_test.go's pair table. Do not argue it up to 3:1.
+
+   Pagination chips are the one deliberate exception: they are bordered
+   with --rst-line rather than --rst-line-strong, because a page strip
+   ringed in hard outlines shouts louder than the list it belongs to.
+   1.4.11 is satisfied without that border — each chip's meaning is
+   carried by its text label at 4.5:1 or better, and the current page
+   adds a filled background, a heavier weight and aria-current on top.
+
+   --rst-shadow-pop, --rst-shadow-knob, --rst-shadow-lift and
+   --rst-overlay are not in the table: they paint a translucent shadow or
+   scrim over whatever sits underneath, not text over a fixed
+   background, so a contrast ratio does not apply. The scrim deepens in
+   dark, matching --rst-shadow-pop's own jump: black reads lighter
+   against a dark backdrop, so the overlay needs more alpha to still
+   read as a dimming layer.
+   ──────────────────────────────────────────────────────────────────── */
+
+:root {
+  color-scheme: light dark;
+
+  /* Type: the family only. Sizes and spacing are structural and stay in
+     tokens.css. */
+  --rst-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* Shape: soft, ordinary, unremarkable. */
+  --rst-radius: 8px;
+  --rst-radius-sm: 6px;
+  --rst-radius-pill: 999px;
+
+  /* Surfaces and lines */
+  --rst-bg: light-dark(#ffffff, #111418);
+  --rst-surface: light-dark(#ffffff, #1a1f26);
+  --rst-surface-2: light-dark(#f6f7f8, #15191f);
+  --rst-line: light-dark(#e5e7eb, #2a3038);
+  --rst-line-strong: light-dark(#7f8792, #79828e);
+
+  /* The page header's rule, derived rather than authored: the accent
+     folded into the line at 18%, so a theme that changes its accent
+     gets a matching rule with no second value to keep in step. day's
+     is barely there — a hairline you would call grey until you put it
+     beside plain's. Decorative: it carries no contrast floor. */
+  --rst-header-rule: color-mix(in oklab, var(--rst-accent) 18%, var(--rst-line));
+
+  /* Text */
+  --rst-text: light-dark(#1a1d21, #e8eaed);
+  --rst-text-muted: light-dark(#4b5563, #a8b0ba);
+  --rst-text-faint: light-dark(#656c78, #98a1ac);
+
+  /* Accent */
+  --rst-accent: light-dark(#2464e0, #7ba7ff);
+  --rst-accent-strong: light-dark(#1a4fc0, #a3c0ff);
+  --rst-accent-soft: light-dark(#eef3fe, #17233a);
+  --rst-on-accent: light-dark(#ffffff, #0b1220);
+
+  /* Status tones */
+  --rst-tone-neutral-fg: light-dark(#374151, #c3c9d1);
+  --rst-tone-neutral-bg: light-dark(#eef0f2, #262c34);
+  --rst-tone-positive-fg: light-dark(#166534, #6ee7a8);
+  --rst-tone-positive-bg: light-dark(#dcfce7, #10281c);
+  --rst-tone-warning-fg: light-dark(#854d0e, #f0c46a);
+  --rst-tone-warning-bg: light-dark(#fef3c7, #2c2110);
+  --rst-tone-negative-fg: light-dark(#b91c1c, #f79aa0);
+  --rst-tone-negative-bg: light-dark(#fee2e2, #331819);
+
+  /* Depth */
+  --rst-shadow-pop: 0 8px 24px light-dark(rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.5));
+  --rst-shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --rst-shadow-lift: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --rst-overlay: light-dark(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.6));
+}
+
+/* The whole toggle. Setting color-scheme re-resolves every light-dark()
+   above, so an explicit choice beats the OS in both directions without
+   restating a colour. */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }

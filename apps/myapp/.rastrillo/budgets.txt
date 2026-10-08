@@ -1,0 +1,11 @@
+# Exceptions to this app's budgets. Empty is the goal.
+#
+# Defaults: 5,000 source and 8,000 test lines per directory; 10s per
+# test package; 150ms to first byte per GET screen; 500ms cold boot.
+# A record exists only where something cannot meet them, and every
+# record says why. docs/site/testing.md has the full grammar.
+#
+#   size  <dir>             <source>|-  <test>|-  <reason>
+#   time  <dir>             <duration>            <reason>
+#   perf  <METHOD> <path>   <duration>|skip       <reason>
+#   boot                    <duration>            <reason>
