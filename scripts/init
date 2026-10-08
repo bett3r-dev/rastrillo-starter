@@ -47,6 +47,10 @@ grep -rlI -e myapp -e MYAPP -e myproject . | while read -r f; do
 	rm -f "$f.init-bak"
 done
 
+# The new names sort differently inside an import block (house/... and
+# demo/libs/... swap places), which the gate's fmt-check refuses.
+find . -name '*.go' -not -path './.git/*' -exec gofmt -w {} +
+
 git init -q -b main
 echo "init: $dest is $project, with apps/$app. Next:"
 echo "  cd $dest && make ci && make ledger-install && git add -A && git commit -m 'chore: $project from rastrillo-starter'"
