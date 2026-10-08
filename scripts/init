@@ -1,0 +1,52 @@
+#!/bin/sh
+# init makes a new project from this starter:
+#
+#   scripts/init <dest-dir> <project> <app>
+#
+# It copies what is committed here (git archive HEAD, so nothing local
+# leaks in) to <dest-dir>, renames the placeholders, and runs git init
+# there. Nothing is committed: run the gate, read the diff, then commit.
+#
+#   myproject -> <project>   module paths (<project>/libs, <project>/tools), compose and Grafana names
+#   myapp     -> <app>       the first app: module, package, binary, apps/<app>, the dashboard
+#   MYAPP     -> <APP>       its environment variables (<APP>_ORIGIN, <APP>_TENANT, <APP>_DEV_RELOAD)
+#
+# Both names must be valid Go package names: lower-case letters and
+# digits, starting with a letter. The app's name is also its package,
+# its binary and its database file.
+set -eu
+
+die() { echo "init: $*" >&2; exit 2; }
+
+[ $# -eq 3 ] || die "usage: scripts/init <dest-dir> <project> <app>"
+dest=$1 project=$2 app=$3
+for n in "$project" "$app"; do
+	echo "$n" | grep -Eq '^[a-z][a-z0-9]*$' || die "$n: use lower-case letters and digits, starting with a letter"
+done
+[ ! -e "$dest" ] || die "$dest already exists"
+
+here=$(cd "$(dirname "$0")/.." && pwd)
+git -C "$here" diff --quiet HEAD -- || echo "init: uncommitted changes in the starter are NOT copied (git archive HEAD)" >&2
+
+mkdir -p "$dest"
+git -C "$here" archive HEAD | tar -x -C "$dest"
+cd "$dest"
+rm -f STARTER.md scripts/init
+
+# Paths first, deepest first, so a directory is renamed after its
+# contents.
+find . -depth -name '*myapp*' | while read -r p; do
+	d=$(dirname "$p") b=$(basename "$p")
+	mv "$p" "$d/$(echo "$b" | sed "s/myapp/$app/g")"
+done
+
+# Then contents, text files only.
+APP=$(echo "$app" | tr '[:lower:]' '[:upper:]')
+grep -rlI -e myapp -e MYAPP -e myproject . | while read -r f; do
+	LC_ALL=C sed -i.init-bak -e "s/myproject/$project/g" -e "s/MYAPP/$APP/g" -e "s/myapp/$app/g" "$f"
+	rm -f "$f.init-bak"
+done
+
+git init -q -b main
+echo "init: $dest is $project, with apps/$app. Next:"
+echo "  cd $dest && make ci && make ledger-install && git add -A && git commit -m 'chore: $project from rastrillo-starter'"

@@ -1,0 +1,51 @@
+#!/bin/sh
+# new-app adds a rastrillo app to this repository:
+#
+#   scripts/new-app <name> [rastrillo new flags...]     (or: make new-app NAME=<name>)
+#
+# It runs `rastrillo new` under apps/, at the rastrillo version the
+# first app pins, then makes the result a member of this repository:
+# the libs replace directive in its go.mod, a go mod tidy, its line in
+# go.work. The root gate picks it up by directory.
+#
+# It does not lay the conventions over the scaffold. That is a
+# checklist (AGENTS.md, "Adding an app"), on purpose: what to track
+# and which contexts the app owns are decisions, not file copies.
+set -eu
+
+die() { echo "new-app: $*" >&2; exit 2; }
+
+[ $# -ge 1 ] || die "usage: scripts/new-app <name> [rastrillo new flags...]"
+name=$1
+shift
+echo "$name" | grep -Eq '^[a-z][a-z0-9]*$' || die "$name: use lower-case letters and digits, starting with a letter"
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+[ ! -e "apps/$name" ] || die "apps/$name already exists"
+project=$(sed -n 's#^module \(.*\)/libs$#\1#p' libs/go.mod)
+[ -n "$project" ] || die "cannot read the project's module path from libs/go.mod"
+first=$(ls -d apps/*/ | head -n 1)
+[ -n "$first" ] || die "no app under apps/ to take the rastrillo version from"
+
+# The CLI at the version the first app requires, built once.
+bin=$(mktemp -d)
+trap 'rm -rf "$bin"' EXIT
+go -C "$first" build -o "$bin/rastrillo" amadan.net/rastrillo/rastrillo/cmd/rastrillo
+
+(cd apps && "$bin/rastrillo" new "$@" "$name")
+
+cat >> "apps/$name/go.mod" <<EOF
+
+// Shared code lives in the repository's libs module (ADR 0002). The
+// replace, not go.work, is what makes this module build: a release,
+// a container or any runner without the workspace file sees it.
+require $project/libs v0.0.0
+
+replace $project/libs => ../../libs
+EOF
+(cd "apps/$name" && go mod tidy)
+go work use "./apps/$name"
+
+echo "new-app: apps/$name scaffolded and wired into the repository."
+echo "Next: follow AGENTS.md, \"Adding an app\", then make -C apps/$name ci."

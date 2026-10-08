@@ -1,0 +1,3 @@
+.work/
+# go.work.sum is local resolution state for the workspace file.
+go.work.sum

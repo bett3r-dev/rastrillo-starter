@@ -1,0 +1,6 @@
+#!/bin/sh
+# amadan CI entry (single-script fallback for runners without step
+# support). The steps in ci.d/ are the same targets, reported one by
+# one. Must stay executable: a non-executable script resolves "skipped".
+set -e
+exec make ci

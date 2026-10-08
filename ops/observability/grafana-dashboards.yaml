@@ -1,0 +1,13 @@
+# Mounted beside the image's own providers: every JSON in ./dashboards
+# shows up in Grafana's "myproject" folder, and edits to the files are
+# picked up within the interval. Saving from the UI does not write back:
+# export the JSON over the file to keep a change.
+apiVersion: 1
+providers:
+  - name: myproject
+    folder: myproject
+    type: file
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /otel-lgtm/project-dashboards

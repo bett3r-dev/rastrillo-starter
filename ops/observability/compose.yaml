@@ -1,0 +1,36 @@
+# The Grafana stack for local work: one container with an OpenTelemetry
+# Collector in front of Tempo (traces), Prometheus (metrics) and Loki
+# (logs), and Grafana with all three wired as data sources.
+#
+#   make -C apps/myapp observe   # up, then open http://localhost:3000 (no login)
+#   make -C apps/myapp observe-run   # myapp on :8080, exporting to it
+#   make -C apps/myapp observe-down
+#
+# The app pushes OTLP over HTTP to :4318; nothing scrapes it. In
+# production the same app points OTEL_EXPORTER_OTLP_ENDPOINT at a
+# Grafana Alloy (or Collector) that every instance shares, and that
+# forwards to Grafana Cloud or a split Tempo / Mimir / Loki.
+name: myproject-observability
+
+services:
+  lgtm:
+    # Pinned: a tag at least two weeks old, raised by hand.
+    image: grafana/otel-lgtm:0.33.1
+    ports:
+      - "127.0.0.1:3000:3000" # Grafana
+      - "127.0.0.1:4317:4317" # OTLP gRPC
+      - "127.0.0.1:4318:4318" # OTLP HTTP: what the apps send to
+    volumes:
+      # Tempo, Prometheus and Loki keep their data here, so a restart
+      # of the stack keeps the last session's history.
+      - lgtm-data:/data
+      - ./dashboards:/otel-lgtm/project-dashboards:ro
+      - ./grafana-dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/myproject.yaml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  lgtm-data:

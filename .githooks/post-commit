@@ -1,0 +1,6 @@
+#!/bin/sh
+# Marks each commit on its branch's prompt ledger (tools/cmd/ledger). Never
+# fails the commit: the ledger writes its own errors to
+# .git/amadan-ledger/errors.log.
+cd "$(git rev-parse --show-toplevel)" || exit 0
+go -C tools run ./cmd/ledger post-commit >/dev/null 2>&1 || true
