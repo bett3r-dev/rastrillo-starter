@@ -33,8 +33,8 @@ func TestChangesIsStillAppendOnly(t *testing.T) {
 	}
 	var n int64
 	s.db.G.Model(&changes.Change{}).Count(&n)
-	if n != 1 {
-		t.Fatalf("changes rows = %d, want the MemberJoined still there", n)
+	if n != 2 {
+		t.Fatalf("changes rows = %d, want the MemberJoined and its welcome note still there", n)
 	}
 }
 

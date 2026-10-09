@@ -46,6 +46,7 @@ type person struct {
 func given(t *testing.T) *scenario {
 	t.Helper()
 	h, d := newApp(t)
+	collectFlow(t, d)
 	return &scenario{t: t, h: h, db: d}
 }
 

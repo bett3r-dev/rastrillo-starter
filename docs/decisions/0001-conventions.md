@@ -18,7 +18,9 @@ mechanical conventions, and nothing else from DDD in the code:
    the root (`request:<trace id>`, `agent:<name>`); `request_id` is the
    chain's root on every link. `correlation_id` is the request's trace
    id, read off the write's context, never handed along. `actor` is
-   `member:<id>`, `human` or `agent:<name>`. Append-only by trigger.
+   `member:<id>`, `human` or `agent:<name>`. `entry_point` is the
+   business name of what opened the write (ADR 0003). Append-only by
+   trigger.
    `changes.Verify` (`<app> verify -db <copy>`) folds the record onto
    the live rows to find any row it cannot explain.
 2. **Executable scenarios.** Given / When / Then in the customer's

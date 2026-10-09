@@ -35,6 +35,12 @@ go -C "$first" build -o "$bin/rastrillo" amadan.net/rastrillo/rastrillo/cmd/rast
 
 (cd apps && "$bin/rastrillo" new "$@" "$name")
 
+# The scaffold pins the Go its rastrillo release shipped with; this
+# repository pins one Go for every module (make toolchain-check).
+pin=$(sed -n 's/^export GOTOOLCHAIN = //p' Makefile)
+sed -i.new-app-bak "s/^export GOTOOLCHAIN = .*/export GOTOOLCHAIN = $pin/" "apps/$name/Makefile"
+rm -f "apps/$name/Makefile.new-app-bak"
+
 # Only the replace: go mod tidy would drop a require nothing imports
 # yet, and adds it back with the app's first import of libs.
 cat >> "apps/$name/go.mod" <<EOF

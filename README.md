@@ -10,6 +10,7 @@ make ci                          # the whole gate: every app, libs, tools, gitle
 make -C apps/myapp dev           # edit loop on :8080, pages reload on rebuild
 make -C apps/myapp observe       # local Grafana (Tempo, Prometheus, Loki) on :3000
 make -C apps/myapp observe-run   # make dev, exporting to it
+make -C apps/myapp flow          # regenerate apps/myapp/docs/flow.md and flow.json from the scenarios
 make new-app NAME=admin          # another rastrillo app under apps/
 make ledger-install              # once per clone: the prompt ledger's post-commit hook
 ```

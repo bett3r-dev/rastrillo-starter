@@ -198,3 +198,16 @@ at the root) are what the starter ships. What remains:
   reason? The second is the cheaper test of ADR 0001.
 - **Upstream:** would rastrillo accept a flag to pick the app, so one
   module could hold several apps?
+- **Inside an app, split by feature before the budget forces it.**
+  Raised by gastos ADR 0005 (porting Teselly, 23 subdomains) and ADR
+  0006 (Blueprint, files of 900 to 1,600 lines): an app with many
+  contexts passes 5,000 lines per directory early. The likely answer
+  is rastrillo's own path, `internal/<app>/<feature>` with
+  `Mount(r chi.Router, deps)` called from `Router`, one feature
+  package per context with its reasons file and glossary. Decide it
+  before the first large context lands, not after the third; the
+  `make contexts` check and the binding test then read every feature
+  package, not just `internal/<app>/`.
+- **Tenancy, per app.** One instance is one tenant (gastos: one
+  household). What a tenant is for each new app (a team, an org, a
+  customer) is that app's first decision.

@@ -12,6 +12,11 @@ contexts and rastrillo's scaffold conventions.
   example context: replace it with the first real one and keep the
   shape.
 
+One cross-context policy: `MemberJoined[accounts] ⟹
+WelcomeNoteWritten[notes]`, the welcome note written in the joining
+transaction and caused by the join. `docs/flow.md` is the map
+(`make flow`); entry points are `Join`, `WriteNote`, `CorrectNote`.
+
 ---
 
 # rastrillo scaffold conventions

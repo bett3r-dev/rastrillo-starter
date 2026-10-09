@@ -3,7 +3,10 @@
 CARLOS/rastrillo apps in one repository, built on vanilla rastrillo
 plus a fixed set of mechanical conventions and nothing else from DDD.
 The why is `docs/decisions/0001-conventions.md`; the layout is
-`docs/decisions/0002-monorepo-layout.md`. Each app's own `AGENTS.md`
+`docs/decisions/0002-monorepo-layout.md`; the flow map is
+`docs/decisions/0003-flow-chain-extracted-not-enforced.md`; push to
+the browser, when an app needs it, is
+`docs/decisions/0004-real-time-sse-doorbell.md` (proposed). Each app's own `AGENTS.md`
 (`apps/<app>/AGENTS.md`) holds rastrillo's scaffold conventions and
 that app's contexts.
 
@@ -31,7 +34,7 @@ docs/decisions/  ADRs
 
 `make ci` at the root: every app's own `make ci` (vet, gofmt,
 staticcheck, govulncheck, budgets, tests, the perf lane, the migration
-check, `make contexts`), then `libs` and `tools`, then gitleaks once.
+check, `make contexts`, `make flow-check`), then `libs` and `tools`, then gitleaks once.
 `make -C apps/<app> ci` is one app's gate. While editing:
 `go test -short ./internal/<app>/... ./internal/<app>test/` from the
 app's directory. `CGO_ENABLED=0` throughout. Every Makefile pins the
@@ -47,7 +50,7 @@ same `GOTOOLCHAIN`; `make toolchain-check` holds them equal.
 2. **Change records** (`libs/changes`). Every write on a table in the
    app's `Tracked` (models.go) must land a `changes` row in the same
    transaction or it is refused before it reaches SQLite. A handler
-   opens a Trail (`a.trail(r)`), says why with `Because(reason, cause)`,
+   opens a Trail (`a.trail(r, "WriteNote")`), says why with `Because(reason, cause)`,
    and writes with the Trail's context. `reason` is the event
    vocabulary in business language, declared in `reasons_<context>.go`.
    `cause` chains changes (`change:12`) or names the request. The
@@ -59,6 +62,29 @@ same `GOTOOLCHAIN`; `make toolchain-check` holds them equal.
    back as `X-Correlation-Id`. A tracked write outside any request is
    refused (`ErrUncorrelated`): work no request started opens its own
    trace with `telemetry.Start`.
+
+   Every change also carries its **entry point**: the business name
+   of what opened the write, VerbNoun in the customer's words
+   (`WriteNote`, `Join`; `BankReportedTransaction` for an agent), set
+   inline where the Trail opens. Left unnamed, the hook records the
+   method and route instead. `apps/<app>/docs/flow.md` and `flow.json`
+   are the map read off the change records the scenarios land: each
+   entry point's direct facts, the policies (a change caused by one in
+   another context) and the chains
+   `Command → [context] Event ⟹ [context] Event`. They are generated
+   by `make flow` and never hand-edited; `make ci` fails only when
+   they drift from what the scenarios produce. Nothing in them is a
+   rule: unnamed entry points, mixed-context requests and implicit
+   crossings are reported, not refused. They are the map of what the
+   code does, and `flow.json` (versioned) is what a Blueprint board
+   renders from.
+
+   A correction (caused by the change it corrects) is neither a direct
+   landing nor a policy, so its entry point (`CorrectNote`) does not
+   appear in `flow.md`. That is known and accepted (ADR 0003), not a
+   bug in the extractor: do not change `flow_test.go` to make it show.
+   Change the extractor only when the map itself is wrong, and say so
+   in the commit.
 
 3. **Executable scenarios** (`internal/<app>test/*_scenario_test.go`).
    Given / When / Then in the customer's words, through the real entry
@@ -119,6 +145,11 @@ Decider for a flow whose `if` chains rot.
 - Agents (a webhook, a schedule tick) open their own Trail with actor
   `agent:<name>`. They are bearer-authenticated POSTs under `/agent/`,
   outside the browser group (no CSRF evidence, no session).
+- Push to the browser, when an app needs it, is SSE as a doorbell
+  (ADR 0004): writes stay POSTs, an event only says something changed
+  and carries the latest change id, and the client re-fetches. A screen
+  that cannot work without JavaScript is an island, named as the one
+  exception in that app's AGENTS.md, with a read-only fallback.
 - A durable inbox is a table, not rastrillo `jobs` (which is
   in-memory), and plumbing tables (an inbox, a tick ledger) go in
   `Untracked` with the reason: what they did lands on tracked tables.
@@ -133,10 +164,11 @@ with the app's gate green:
 1. `migrations.go`: `BootSchema = migrate.Merge(sessions.Schema, changes.Schema, Schema)`.
 2. `models.go`: `Tracked`, `Untracked` (each with its reason), `TrackedExempt`.
 3. `reasons.go` plus one `reasons_<context>.go` and `CONTEXT-<context>.md` per context.
-4. `app.go`: `changes.Install`, `telemetry.DB`, `telemetry.HTTP` first, the `correlation` middleware.
-5. `cmd/<name>/main.go`: `telemetry.Setup`, the `Tee(Correlate(stderr), tel.Logs)` logger, `Shutdown` after `Serve`, the `verify` subcommand.
-6. `internal/<name>test/`: `scenario_test.go`, `binding_test.go`, `contexts_test.go`, `conventions_test.go`; the Makefile's `contexts` target in `ci`.
-7. `make dev` and `observe` targets, the dashboard in `ops/observability/dashboards/`.
+4. `handlers.go`: `trail(r, entryPoint)`, and an entry point named on every Trail the app opens.
+5. `app.go`: `changes.Install`, `telemetry.DB`, `telemetry.HTTP` first, the `correlation` middleware.
+6. `cmd/<name>/main.go`: `telemetry.Setup`, the `Tee(Correlate(stderr), tel.Logs)` logger, `Shutdown` after `Serve`, the `verify` subcommand.
+7. `internal/<name>test/`: `scenario_test.go` (with `collectFlow` in `given`), `harness_test.go` (`flowGate` after `budget.Main`), `binding_test.go`, `contexts_test.go`, `conventions_test.go`, `flow_test.go`; the Makefile's `contexts`, `flow` and `flow-check` targets, the last two in `ci`; `make flow` once, and commit `docs/flow.md` and `flow.json`.
+8. `make dev` and `observe` targets, the dashboard in `ops/observability/dashboards/`.
 
 ## The prompt ledger
 

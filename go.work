@@ -1,7 +1,7 @@
 // A convenience for gopls and local work, never a dependency: every app
 // builds without it (GOWORK=off) through the replace directive in its
 // own go.mod. ADR 0002.
-go 1.25.0
+go 1.26.0
 
 use (
 	./apps/myapp

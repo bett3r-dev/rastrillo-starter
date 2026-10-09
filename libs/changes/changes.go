@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"amadan.net/rastrillo/rastrillo/migrate"
+	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 )
 
@@ -76,6 +77,15 @@ type Change struct {
 	// Actor is "member:<id>", "human" (signing up, before there is a
 	// member) or "agent:<name>".
 	Actor string `gorm:"not null"`
+	// EntryPoint is the business name of what opened the write: a
+	// person's command (WriteNote) or an outside fact
+	// (BankReportedTransaction, DayPassed). A Trail opened with no name
+	// records the request's method and chi route pattern instead
+	// ("POST /notes/{id}/archive"), so an unnamed action still shows in
+	// the app's docs/flow.md. Every change a request lands carries the
+	// Trail's, the caused ones included, so the flow chain reads
+	// Command -> Event ==> Event off this table alone.
+	EntryPoint string `gorm:"index;not null;default:''"`
 	// Entity is the table, EntityID the row.
 	Entity   string `gorm:"index;not null"`
 	EntityID int64  `gorm:"index;not null"`
@@ -111,6 +121,10 @@ var ErrUnexplained = errors.New("changes: write on a tracked table with no reaso
 // and every write already takes one.
 type Trail struct {
 	Actor string
+	// EntryPoint names what opened this Trail, in business words, set
+	// where the Trail is opened. Written on every change it records;
+	// left "", the hook writes the request's route (see entryPoint).
+	EntryPoint string
 
 	reason string
 	cause  string // as given to Because; "" means the request itself
@@ -413,6 +427,7 @@ func record(db *gorm.DB, tracked map[string]bool, op string) {
 			RequestID:     root,
 			CorrelationID: t.correlation,
 			Actor:         t.Actor,
+			EntryPoint:    entryPoint(t, st.Context),
 			Entity:        st.Table,
 			EntityID:      id,
 			Op:            op,
@@ -426,6 +441,24 @@ func record(db *gorm.DB, tracked map[string]bool, op string) {
 		}
 		t.recorded = append(t.recorded, c)
 	}
+}
+
+// entryPoint is the Trail's name for what opened it or, when it has
+// none, the method and chi route pattern of the request the write
+// runs in ("POST /notes/{id}/archive"). Outside a routed request it
+// stays "".
+func entryPoint(t *Trail, ctx context.Context) string {
+	if t.EntryPoint != "" || ctx == nil {
+		return t.EntryPoint
+	}
+	rc := chi.RouteContext(ctx)
+	if rc == nil || rc.RoutePattern() == "" {
+		return ""
+	}
+	if rc.RouteMethod == "" {
+		return rc.RoutePattern()
+	}
+	return rc.RouteMethod + " " + rc.RoutePattern()
 }
 
 func diffOf(dest any, row reflect.Value, op string) string {

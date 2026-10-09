@@ -10,7 +10,7 @@ APP := myapp
 # A plain =, not ?=: Go's container images set GOTOOLCHAIN=local, and ?=
 # would quietly keep whatever Go they ship. To override for one run:
 #   make ci GOTOOLCHAIN=local
-export GOTOOLCHAIN = go1.26.6
+export GOTOOLCHAIN = go1.26.9
 
 # What `carlos ship -target` defaults to, and therefore what a release
 # must be built for. Building for your own machine and shipping that is a
@@ -38,7 +38,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null)
 # and a suite running beside it would be measured too.
 .NOTPARALLEL:
 
-.PHONY: build release version-check test vet fmt-check staticcheck govulncheck gitleaks budget perf migration-check contexts ci dev observe observe-run observe-down
+.PHONY: build release version-check test vet fmt-check staticcheck govulncheck gitleaks budget perf migration-check contexts flow flow-check ci dev observe observe-run observe-down
 
 RASTRILLO := go run amadan.net/rastrillo/rastrillo/cmd/rastrillo
 
@@ -238,6 +238,20 @@ migration-check:
 contexts:
 	CGO_ENABLED=0 go test -count=1 -run TestNoJoinsAcrossContexts ./internal/myapptest/
 
+# The flow chain (Command -> [context] Event ==> [context] Event), read
+# off the change records every scenario lands (ADR 0003). It needs all
+# of them, so it runs only when asked, after the whole package: flow
+# writes docs/flow.md and docs/flow.json, flow-check fails only on a
+# committed copy the scenarios no longer produce (empty or unnamed
+# entry points, mixed-context requests and implicit crossings are
+# reported there, never failed). It writes and reads files Go cannot
+# see, hence -count=1.
+flow:
+	CGO_ENABLED=0 FLOW_UPDATE=1 go test -count=1 ./internal/myapptest/
+
+flow-check:
+	CGO_ENABLED=0 FLOW_CHECK=1 go test -count=1 ./internal/myapptest/
+
 # ci is the one gate: what a runner executes and what you run before
 # pushing are the same definition. amadan's runner falls back to this
 # target when .amadan/ci is absent; ci.d/ carries the same targets,
@@ -245,4 +259,4 @@ contexts:
 # fails the build the moment models.go and migrations/ disagree,
 # instead of at boot on whatever machine notices next. If the app
 # declares manifest resources, also add: rastrillo generate --check
-ci: vet fmt-check staticcheck govulncheck gitleaks budget test perf migration-check contexts
+ci: vet fmt-check staticcheck govulncheck gitleaks budget test perf migration-check contexts flow-check

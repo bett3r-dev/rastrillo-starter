@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "entry_points": [
+    {
+      "name": "Join",
+      "context": "accounts",
+      "reasons": [
+        "MemberJoined"
+      ],
+      "actors": [
+        "human"
+      ]
+    },
+    {
+      "name": "WriteNote",
+      "context": "notes",
+      "reasons": [
+        "NoteWritten"
+      ],
+      "actors": [
+        "member"
+      ]
+    }
+  ],
+  "unnamed": [],
+  "policies": [
+    {
+      "from": {
+        "reason": "MemberJoined",
+        "context": "accounts"
+      },
+      "to": {
+        "reason": "WelcomeNoteWritten",
+        "context": "notes"
+      },
+      "scenarios": [
+        "TestScenarioANoteWithoutATitleIsRefused",
+        "TestScenarioCorrectingANote",
+        "TestScenarioJoining",
+        "TestScenarioWritingANote"
+      ]
+    }
+  ],
+  "chains": [
+    {
+      "line": "Join → [accounts] MemberJoined ⟹ [notes] WelcomeNoteWritten",
+      "entry_point": "Join",
+      "event": {
+        "reason": "MemberJoined",
+        "context": "accounts"
+      },
+      "then": [
+        {
+          "from": {
+            "reason": "MemberJoined",
+            "context": "accounts"
+          },
+          "to": {
+            "reason": "WelcomeNoteWritten",
+            "context": "notes"
+          },
+          "scenarios": []
+        }
+      ],
+      "scenarios": [
+        "TestScenarioANoteWithoutATitleIsRefused",
+        "TestScenarioCorrectingANote",
+        "TestScenarioJoining",
+        "TestScenarioWritingANote"
+      ]
+    },
+    {
+      "line": "WriteNote → [notes] NoteWritten",
+      "entry_point": "WriteNote",
+      "event": {
+        "reason": "NoteWritten",
+        "context": "notes"
+      },
+      "then": [],
+      "scenarios": [
+        "TestScenarioCorrectingANote",
+        "TestScenarioWritingANote"
+      ]
+    }
+  ],
+  "empty": [],
+  "mixed": [],
+  "implicit_crossings": []
+}

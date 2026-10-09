@@ -20,7 +20,8 @@ On top of `rastrillo new -shell topbar <app>` (v0.28.0), the monorepo
 layout of `docs/decisions/0002-monorepo-layout.md`:
 
 - **libs/changes**: the change record. Trail, hook and TEMP guard
-  triggers, cause chains that cannot loop, the diff by op, `Verify`
+  triggers, cause chains that cannot loop, the diff by op, the entry
+  point (named on the Trail, or the route when unnamed), `Verify`
   (the fold), and `Schema`, the append-only `changes` table as a
   subsystem's migration set.
 - **libs/telemetry**: OTLP push for traces, metrics and logs; chi
@@ -30,7 +31,10 @@ layout of `docs/decisions/0002-monorepo-layout.md`:
 - **tools/ledger**: the prompt ledger in amadan's format, wired to
   Claude Code's Stop/SessionEnd hooks and a post-commit hook.
 - **apps/<app>**: the example app wired to all of it, with two small
-  contexts (accounts: members; notes: notes, with a correction), the
+  contexts (accounts: members; notes: notes, with a correction) and
+  one policy between them (a member joining writes a welcome note,
+  caused by the join), the flow map (`make flow` writes
+  `docs/flow.md` and `flow.json`; `flow-check` is in `make ci`), the
   `/changes` screen, `<app> verify -db`, `make dev` with page reload,
   `make observe`, and the tests that hold the conventions: the
   scenario DSL, the binding test, `noBleed`, no joins across contexts,
@@ -39,7 +43,10 @@ layout of `docs/decisions/0002-monorepo-layout.md`:
   facts, chains descend, the fold).
 - **ops/observability**: the grafana/otel-lgtm stack with the app's
   dashboard provisioned.
-- **docs/decisions**: 0001 (the conventions) and 0002 (the layout).
+- **docs/decisions**: 0001 (the conventions), 0002 (the layout, with
+  the open questions gastos's Teselly and Blueprint ADRs raised),
+  0003 (the flow chain, extracted not enforced) and 0004 (real-time as
+  an SSE doorbell, proposed and not built).
 - The root gate: every app's `make ci`, `libs` and `tools`, gitleaks
   once, the toolchain pins held equal.
 

@@ -12,6 +12,7 @@ import (
 
 	"amadan.net/rastrillo/rastrillo/budget"
 	"amadan.net/rastrillo/rastrillo/db"
+	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 
 	"myproject/libs/changes"
@@ -114,6 +115,33 @@ func TestExplainedWriteLandsARowAndTheChange(t *testing.T) {
 	last, ok := tr.Last()
 	if !ok || last.ID != c.ID {
 		t.Fatalf("Last() = %+v %v", last, ok)
+	}
+}
+
+// A Trail opened with no entry point name records the request's
+// method and route pattern, so an unnamed action still shows; a named
+// one keeps its name.
+func TestUnnamedEntryPointRecordsTheRoute(t *testing.T) {
+	t.Parallel()
+	g := open(t)
+	rc := chi.NewRouteContext()
+	rc.RouteMethod = "POST"
+	rc.RoutePatterns = []string{"/notes/{id}/archive"}
+	routed := context.WithValue(inRequest("req-1"), chi.RouteCtxKey, rc)
+
+	unnamed := changes.Begin("member:1").Because("ProbeRecorded", "")
+	if err := g.WithContext(unnamed.Context(routed)).Create(&probe{Name: "x"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	named := changes.Begin("member:1").Because("ProbeRecorded", "")
+	named.EntryPoint = "ArchiveNote"
+	if err := g.WithContext(named.Context(routed)).Create(&probe{Name: "y"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	var got []changes.Change
+	g.Order("id").Find(&got)
+	if len(got) != 2 || got[0].EntryPoint != "POST /notes/{id}/archive" || got[1].EntryPoint != "ArchiveNote" {
+		t.Fatalf("changes = %+v", got)
 	}
 }
 

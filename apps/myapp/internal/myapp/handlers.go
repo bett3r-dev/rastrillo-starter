@@ -29,17 +29,22 @@ type app struct {
 	sess   *sessions.Sessions
 }
 
-// trail opens the request's change Trail with its actor. The
+// trail opens the request's change Trail with its actor and its entry
+// point: the business name of the command the person gave
+// (WriteNote), written inline by the handler that opens it. Left "",
+// the change hook records the request's method and route pattern
+// instead. Every change the Trail lands carries it (docs/flow.md). The
 // correlation is not handed in: each write reads it off the context
 // it runs under. The actor is the signed-in member (member:<id>), or
 // "human" on the one route a person uses before they are a member
 // (signing up). Agents open their own with their name.
-func (a *app) trail(r *http.Request) (*changes.Trail, context.Context) {
+func (a *app) trail(r *http.Request, entryPoint string) (*changes.Trail, context.Context) {
 	actor := "human"
 	if uid, ok := sessions.UserID(r); ok {
 		actor = "member:" + strconv.FormatInt(uid, 10)
 	}
 	t := changes.Begin(actor)
+	t.EntryPoint = entryPoint
 	return t, t.Context(r.Context())
 }
 
@@ -77,13 +82,19 @@ func (a *app) lookupMember(ctx context.Context, email string) (int64, string, er
 }
 
 // createMember is joining: the password plugin's Create callback,
-// explained as MemberJoined.
+// explained as MemberJoined. It is also the example's cross-context
+// policy: the notes context reacts to the join by writing a welcome
+// note, a change caused by the MemberJoined change, in the same
+// transaction (MemberJoined[accounts] ⟹ WelcomeNoteWritten[notes] in
+// docs/flow.md). The accounts code never names a notes table's
+// reason as its own; it causes one.
 func (a *app) createMember(ctx context.Context, email, hash string) (int64, error) {
 	name, _ := ctx.Value(nameKey{}).(string)
 	if name == "" {
 		name = strings.SplitN(email, "@", 2)[0]
 	}
 	t := changes.Begin("human").Because(ReasonMemberJoined, "")
+	t.EntryPoint = "Join"
 	m := Member{Email: email, Name: name}
 	// The diff must not carry the hash: write it in a second step,
 	// exempt from the record (TrackedExempt), so the MemberJoined
@@ -92,8 +103,12 @@ func (a *app) createMember(ctx context.Context, email, hash string) (int64, erro
 		if err := tx.Create(&m).Error; err != nil {
 			return err
 		}
-		return tx.Session(&gorm.Session{SkipHooks: true}).
-			Exec("UPDATE members SET password_hash = ? WHERE id = ?", hash, m.ID).Error
+		if err := tx.Session(&gorm.Session{SkipHooks: true}).
+			Exec("UPDATE members SET password_hash = ? WHERE id = ?", hash, m.ID).Error; err != nil {
+			return err
+		}
+		joined, _ := t.Last()
+		return welcome(tx, t, m, joined)
 	})
 	return m.ID, err
 }
@@ -178,7 +193,7 @@ func (a *app) noteCreate(w http.ResponseWriter, r *http.Request) {
 		a.render(w, r, "note_new", "Write a note", noteForm{Values: p.Echo(), Errors: p.Errors()})
 		return
 	}
-	t, ctx := a.trail(r)
+	t, ctx := a.trail(r, "WriteNote")
 	t.Because(ReasonNoteWritten, "")
 	n := Note{AuthorID: me.ID, Title: p.String("title"), Body: p.String("body")}
 	if err := a.db.G.WithContext(ctx).Create(&n).Error; err != nil {
@@ -187,6 +202,13 @@ func (a *app) noteCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	flash.Set(w, "notice", "Wrote "+n.Title+".")
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// welcome is the notes context's policy on a member joining: a note
+// greeting them, caused by the MemberJoined change it reacts to.
+func welcome(tx *gorm.DB, t *changes.Trail, m Member, joined changes.Change) error {
+	t.Because(ReasonWelcomeNoteWritten, joined.Ref())
+	return tx.Create(&Note{AuthorID: m.ID, Title: "Welcome, " + m.Name}).Error
 }
 
 // note loads the note in the URL; a missing one is a 404.
@@ -239,7 +261,7 @@ func (a *app) noteCorrect(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, "correct note", err)
 		return
 	}
-	t, ctx := a.trail(r)
+	t, ctx := a.trail(r, "CorrectNote")
 	t.Because(ReasonNoteCorrected, last.Ref())
 	if err := a.db.G.WithContext(ctx).Model(&n).Select("Title", "Body").
 		Updates(map[string]any{"Title": p.String("title"), "Body": p.String("body")}).Error; err != nil {

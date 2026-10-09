@@ -37,6 +37,9 @@ var schema = dbtest.FromSet(myapp.BootSchema)
 // copied it.
 func TestMain(m *testing.M) {
 	code := budget.Main(m)
+	if code == 0 {
+		code = flowGate() // only under make flow / make flow-check (flow_test.go)
+	}
 	schema.Remove()
 	os.Exit(code)
 }
