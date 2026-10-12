@@ -120,7 +120,8 @@ type flowMap struct {
 }
 
 // flowEntry is what one entry point lands directly in one context.
-// Actors are who opened it: "member", "human" or "agent:<name>".
+// Actors are who opened it: "member", "platform" (a platform admin
+// acting as a member, blueprint2's ADR 0005), "human" or "agent:<name>".
 type flowEntry struct {
 	Name    string   `json:"name"`
 	Context string   `json:"context"`
@@ -178,8 +179,19 @@ func eventOf(c changes.Change) flowEvent {
 
 // actorKind drops the member id: a board shows who, not which one.
 func actorKind(a string) string {
-	if strings.HasPrefix(a, "member:") {
-		return "member"
+	// A member or a platform admin is a kind of person, never one
+	// person: the map names who opens an entry point, not which id.
+	for _, kind := range []string{"member", "platform"} {
+		if strings.HasPrefix(a, kind+":") {
+			return kind
+		}
+	}
+	// An agent acting for a member names the member too
+	// (agent:claude-code:<id>, blueprint2's ADR 0007): the map names the agent.
+	if name, ok := strings.CutPrefix(a, "agent:"); ok {
+		if kind, _, ok := strings.Cut(name, ":"); ok {
+			return "agent:" + kind
+		}
 	}
 	return a
 }
@@ -215,7 +227,10 @@ func flowOf(by map[string][]changes.Change) flowMap {
 			if c.EntryPoint == "" {
 				m.Empty = append(m.Empty, flowEmpty{Scenario: scen, ChangeID: c.ID, Event: ev})
 			}
-			if strings.HasPrefix(c.Cause, "change:") {
+			// A cause from an earlier request (a correction, an agent
+			// fulfilling a request) is where this request starts, as a
+			// request cause is: the change is its entry point's own.
+			if strings.HasPrefix(c.Cause, "change:") && !causedEarlier(c, byID) {
 				p, ok := parentOf(c, byID)
 				if pev := eventOf(p); ok && pev.Context != ev.Context {
 					a := [2]flowEvent{pev, ev}
@@ -349,9 +364,17 @@ func flowOf(by map[string][]changes.Change) flowMap {
 	if m.ImplicitCrossings == nil {
 		m.ImplicitCrossings = []flowCrossing{}
 	}
-	sort.SliceStable(m.Mixed, func(i, j int) bool {
-		return m.Mixed[i].EntryPoint+m.Mixed[i].Scenario < m.Mixed[j].EntryPoint+m.Mixed[j].Scenario
-	})
+	// Two requests of one entry point in one scenario are keyed by their
+	// trace ids, which are random: what they landed breaks the tie, so
+	// the map does not change from run to run.
+	mixedKey := func(mx flowMixed) string {
+		k := mx.EntryPoint + "\x00" + mx.Scenario
+		for _, c := range mx.Contexts {
+			k += "\x00" + c.Context + ":" + strings.Join(c.Reasons, ",")
+		}
+		return k
+	}
+	sort.SliceStable(m.Mixed, func(i, j int) bool { return mixedKey(m.Mixed[i]) < mixedKey(m.Mixed[j]) })
 	return m
 }
 
@@ -437,7 +460,7 @@ func (m flowMap) markdown() []byte {
 			fmt.Fprintf(&b, "| %s | %s | %s | %s |\n", e.Name, e.Context, strings.Join(e.Reasons, ", "), strings.Join(e.Actors, ", "))
 		}
 	}
-	b.WriteString("## Entry points\n\nWhat each named entry point lands directly: caused by the request, not by another change.\n\n")
+	b.WriteString("## Entry points\n\nWhat each named entry point lands directly: caused by the request, or by a change an earlier request landed, not by another change of its own.\n\n")
 	entryTable(m.EntryPoints)
 	b.WriteString("\n## Unnamed entry points\n\nTrails opened with no name: the hook recorded the request's method and route instead.\n\n")
 	entryTable(m.Unnamed)
@@ -484,8 +507,25 @@ func (m flowMap) markdown() []byte {
 	return b.Bytes()
 }
 
-// parentOf is the change c's cause names, when it names one.
+// parentOf is the change c's cause names, when it names one landed
+// by the same request: a cause counts as a parent only within one
+// request (ADR 0003, the same-request parent rule).
 func parentOf(c changes.Change, byID map[int64]changes.Change) (changes.Change, bool) {
+	p, ok := causeOf(c, byID)
+	if !ok || p.CorrelationID != c.CorrelationID {
+		return changes.Change{}, false
+	}
+	return p, true
+}
+
+// causedEarlier says c's cause is a change an earlier request landed.
+func causedEarlier(c changes.Change, byID map[int64]changes.Change) bool {
+	p, ok := causeOf(c, byID)
+	return ok && p.CorrelationID != c.CorrelationID
+}
+
+// causeOf is the change c's cause names, from any request.
+func causeOf(c changes.Change, byID map[int64]changes.Change) (changes.Change, bool) {
 	rest, ok := strings.CutPrefix(c.Cause, "change:")
 	if !ok {
 		return changes.Change{}, false
@@ -545,6 +585,15 @@ func TestFlowReportsWhatItFinds(t *testing.T) {
 	}}).markdown())
 	if !strings.Contains(doc, "- TestScenarioZ: MemberJoined[accounts] under `WriteNote` [notes], change #2") {
 		t.Errorf("implicit crossing not reported:\n%s", doc)
+	}
+	// A cause from an earlier request is where this request starts:
+	// CorrectNote lands its fact directly, and no policy edge comes of it.
+	doc = string(flowOf(map[string][]changes.Change{"TestScenarioE": {
+		{ID: 1, EntryPoint: "WriteNote", Reason: myapp.ReasonNoteWritten, Cause: "request:r", CorrelationID: "r", Actor: "member:1"},
+		{ID: 2, EntryPoint: "CorrectNote", Reason: myapp.ReasonNoteCorrected, Cause: "change:1", CorrelationID: "s", Actor: "member:1"},
+	}}).markdown())
+	if !strings.Contains(doc, "| CorrectNote | notes | "+myapp.ReasonNoteCorrected+" | member |") {
+		t.Errorf("a change caused by an earlier request is not its entry point's own:\n%s", doc)
 	}
 }
 

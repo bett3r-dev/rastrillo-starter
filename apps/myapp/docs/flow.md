@@ -8,10 +8,11 @@ Extracted, not enforced: this is the map of what the code does, and nothing here
 
 ## Entry points
 
-What each named entry point lands directly: caused by the request, not by another change.
+What each named entry point lands directly: caused by the request, or by a change an earlier request landed, not by another change of its own.
 
 | Entry point | Context | Reasons | Actors |
 |---|---|---|---|
+| CorrectNote | notes | NoteCorrected | member |
 | Join | accounts | MemberJoined | human |
 | WriteNote | notes | NoteWritten | member |
 
@@ -31,6 +32,7 @@ A change in one context caused by a change in another, with the scenarios that l
 
 Each entry point's direct facts, followed through the cross-context policies they set off, with the scenarios that land the whole line. Same-context follow-ups are left out.
 
+- `CorrectNote → [notes] NoteCorrected`: TestScenarioANoteKeepsItsOwnHistory, TestScenarioCorrectingANote
 - `Join → [accounts] MemberJoined ⟹ [notes] WelcomeNoteWritten`: TestScenarioANoteKeepsItsOwnHistory, TestScenarioANoteWithoutATitleIsRefused, TestScenarioAReconnectCatchesUp, TestScenarioARolledBackWriteRingsNothing, TestScenarioCorrectingANote, TestScenarioJoining, TestScenarioTheNotesPageSaysWhatRefreshesIt, TestScenarioWritingANote, TestScenarioWritingANoteRingsEveryNotesPage
 - `WriteNote → [notes] NoteWritten`: TestScenarioANoteKeepsItsOwnHistory, TestScenarioAReconnectCatchesUp, TestScenarioARolledBackWriteRingsNothing, TestScenarioCorrectingANote, TestScenarioTheNotesPageSaysWhatRefreshesIt, TestScenarioWritingANote, TestScenarioWritingANoteRingsEveryNotesPage
 

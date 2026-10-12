@@ -1,7 +1,8 @@
 # myproject
 
 CARLOS/rastrillo apps in one repository: `apps/<app>` is one app each,
-`libs/` is the code they share (the change record, OpenTelemetry), and
+`libs/` is the code they share (the change record, OpenTelemetry,
+socket activation, the SSE doorbell), and
 `tools/` holds the prompt ledger. `AGENTS.md` is how to work here;
 `docs/decisions/` is why it is shaped this way.
 

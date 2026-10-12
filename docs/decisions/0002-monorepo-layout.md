@@ -161,6 +161,64 @@ Not built by the starter; the design for when the admin arrives.
 - Each app pins its own `GOTOOLCHAIN` in its Makefile. Keep them
   equal; a root check comparing them is cheap.
 
+### Inside an app: split by feature (decided in blueprint2, 2026-10-09)
+
+Raised as an open question by gastos ADR 0005 and 0006 (an app with
+many contexts passes 5,000 lines per directory early), and decided
+in blueprint2 before its first large context (session-engine) landed
+in its `apps/server`: rastrillo's own path, `internal/<app>/<feature>` with
+`Mount(r chi.Router, Deps)` called from `Router`. Root
+`internal/<app>` stays the registry (models, `BootSchema`,
+`Tracked`/`Untracked`, migrations, the aggregated `Reasons` and
+`Contexts`, and the wiring of every policy between packages), since
+rastrillo's migration check reads that one package; the request glue
+features share (Trail, rendering, role gate) is `internal/<app>/kit`,
+because features cannot import root. A context lives in exactly one
+package and a package may hold several; features never import each
+other (checked in `make contexts`), so a policy across packages is a
+function the reacting context exports, taken in the source's `Deps`
+and wired by root. Scenarios stay in `internal/<app>test`, one binary,
+because the flow map needs them together; the binding and contexts
+tests read every package under `internal/<app>/`. In blueprint2, notes
+moved first (`apps/server/internal/server/notes`) with no behaviour
+change: the flow map came out identical, and its `apps/server/AGENTS.md`
+("Feature packages") has the layout. `apps/myapp` here is small enough
+to stay one package; an app cut from it splits from its first large
+context, not after the third.
+
+### Amendment, 2026-10-12: shipped clients under `clients/`
+
+Carried from blueprint2's amendment of 2026-10-09; no client is here
+yet. There, `blueprint-mcp` (its ADR 0007) was the first program that
+is neither an app nor a tool: it ships to developers' laptops, but it is no
+rastrillo app (no database, no screens, no CARLOS unit) and `tools/`
+is for what never ships. So a third kind of module:
+
+```
+clients/
+  <name>/                         one module per shipped client
+    go.mod                        myproject/clients/<name>; libs by a replace, only if it needs it
+    Makefile                      its own make ci; the same GOTOOLCHAIN as the root
+    cmd/<name>/  internal/  contract/  README.md
+```
+
+- **One module per client**, its own dependency graph (the MCP SDK
+  stays out of the apps' and `libs`' graphs), its own `make ci`. It
+  is in `go.work`, and like an app it builds with `GOWORK=off`.
+- **`libs` by a `replace`, only when it needs it.** blueprint-mcp does:
+  its `libs/attach` is the wire contract the tenant shares, and code an
+  app and a client both need goes to `libs/` as code two apps share
+  does.
+- **A client never imports an app** (Go's `internal/` forbids it
+  anyway); it talks to apps over HTTP, as apps talk to each other.
+- **Its gate tests it against the real app.** A client's `make ci`
+  includes a contract test that builds and starts the app it talks to
+  and drives every call through the real routes, so the root
+  `make ci` fails when an app changes under a client.
+- **The root gate** runs `make -C clients/<name> ci` for each, after
+  the apps, and `toolchain-check` holds each client's `GOTOOLCHAIN` to
+  the root's. The first client to land adds both to the root Makefile
+  (blueprint2's `make clients`, `.amadan/ci.d/25-clients`).
 ## Order of work
 
 Steps 1 to 4 (apps under `apps/`, `tools/` and `libs/` as their own
@@ -198,16 +256,6 @@ at the root) are what the starter ships. What remains:
   reason? The second is the cheaper test of ADR 0001.
 - **Upstream:** would rastrillo accept a flag to pick the app, so one
   module could hold several apps?
-- **Inside an app, split by feature before the budget forces it.**
-  Raised by gastos ADR 0005 (porting Teselly, 23 subdomains) and ADR
-  0006 (Blueprint, files of 900 to 1,600 lines): an app with many
-  contexts passes 5,000 lines per directory early. The likely answer
-  is rastrillo's own path, `internal/<app>/<feature>` with
-  `Mount(r chi.Router, deps)` called from `Router`, one feature
-  package per context with its reasons file and glossary. Decide it
-  before the first large context lands, not after the third; the
-  `make contexts` check and the binding test then read every feature
-  package, not just `internal/<app>/`.
 - **Tenancy, per app.** One instance is one tenant (gastos: one
   household). What a tenant is for each new app (a team, an org, a
   customer) is that app's first decision.

@@ -236,7 +236,7 @@ migration-check:
 # contexts reads the app's source files, which Go's test cache cannot
 # see as inputs, so it runs uncached on its own.
 contexts:
-	CGO_ENABLED=0 go test -count=1 -run TestNoJoinsAcrossContexts ./internal/myapptest/
+	CGO_ENABLED=0 go test -count=1 -run 'TestNoJoinsAcrossContexts|TestNoFeatureImportsAnother' ./internal/myapptest/
 
 # The flow chain (Command -> [context] Event ==> [context] Event), read
 # off the change records every scenario lands (ADR 0003). It needs all

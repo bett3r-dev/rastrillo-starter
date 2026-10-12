@@ -23,17 +23,24 @@ layout of `docs/decisions/0002-monorepo-layout.md`:
   triggers, cause chains that cannot loop, the diff by op, the entry
   point (named on the Trail, or the route when unnamed), `Verify`
   (the fold), and `Schema`, the append-only `changes` table as a
-  subsystem's migration set.
+  subsystem's migration set; scope (`Within`, `WithinCreated`,
+  `InScope`), `on_behalf_of`, `Policy.Admit`, `Policy.Committed` and
+  `Trail.OnRecord`, as blueprint2 built them.
 - **libs/telemetry**: OTLP push for traces, metrics and logs; chi
   middleware and GORM callbacks; the trace id as the correlation;
   slog `Tee` and `Correlate`; the SQLite file-size gauge; flush on
   SIGTERM.
+- **libs/activation**: systemd socket activation and the idle exit
+  (`<APP>_IDLE_TIMEOUT`), a tenant's scale to zero (ADR 0005).
+- **libs/doorbell**: the SSE doorbell (ADR 0004): `Bell`, `Stream`,
+  `Draining` and `live.js`, which an app vendors as `static/live.js`.
 - **tools/ledger**: the prompt ledger in amadan's format, wired to
   Claude Code's Stop/SessionEnd hooks and a post-commit hook.
 - **apps/<app>**: the example app wired to all of it, with two small
   contexts (accounts: members; notes: notes, with a correction) and
   one policy between them (a member joining writes a welcome note,
-  caused by the join), the flow map (`make flow` writes
+  caused by the join), a note's changes scoped to it, the notes list
+  live through the doorbell, the idle exit, the flow map (`make flow` writes
   `docs/flow.md` and `flow.json`; `flow-check` is in `make ci`), the
   `/changes` screen, `<app> verify -db`, `make dev` with page reload,
   `make observe`, and the tests that hold the conventions: the
@@ -45,8 +52,10 @@ layout of `docs/decisions/0002-monorepo-layout.md`:
   dashboard provisioned.
 - **docs/decisions**: 0001 (the conventions), 0002 (the layout, with
   the open questions gastos's Teselly and Blueprint ADRs raised),
-  0003 (the flow chain, extracted not enforced) and 0004 (real-time as
-  an SSE doorbell, proposed and not built).
+  0003 (the flow chain, extracted not enforced, with the same-request
+  parent rule), 0004 (real-time as an SSE doorbell, accepted as built)
+  and 0005 (tenancy: a process per tenant, socket-activated, exiting
+  when idle).
 - The root gate: every app's `make ci`, `libs` and `tools`, gitleaks
   once, the toolchain pins held equal.
 

@@ -2,6 +2,16 @@
   "version": 1,
   "entry_points": [
     {
+      "name": "CorrectNote",
+      "context": "notes",
+      "reasons": [
+        "NoteCorrected"
+      ],
+      "actors": [
+        "member"
+      ]
+    },
+    {
       "name": "Join",
       "context": "accounts",
       "reasons": [
@@ -47,6 +57,19 @@
     }
   ],
   "chains": [
+    {
+      "line": "CorrectNote → [notes] NoteCorrected",
+      "entry_point": "CorrectNote",
+      "event": {
+        "reason": "NoteCorrected",
+        "context": "notes"
+      },
+      "then": [],
+      "scenarios": [
+        "TestScenarioANoteKeepsItsOwnHistory",
+        "TestScenarioCorrectingANote"
+      ]
+    },
     {
       "line": "Join → [accounts] MemberJoined ⟹ [notes] WelcomeNoteWritten",
       "entry_point": "Join",

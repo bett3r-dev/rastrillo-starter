@@ -6,7 +6,9 @@ The why is `docs/decisions/0001-conventions.md`; the layout is
 `docs/decisions/0002-monorepo-layout.md`; the flow map is
 `docs/decisions/0003-flow-chain-extracted-not-enforced.md`; push to
 the browser, when an app needs it, is
-`docs/decisions/0004-real-time-sse-doorbell.md` (`libs/doorbell`). Each app's own `AGENTS.md`
+`docs/decisions/0004-real-time-sse-doorbell.md` (`libs/doorbell`);
+tenancy (a process per tenant, socket-activated, exiting when idle) is
+`docs/decisions/0005-tenancy-process-per-tenant.md`. Each app's own `AGENTS.md`
 (`apps/<app>/AGENTS.md`) holds rastrillo's scaffold conventions and
 that app's contexts.
 
@@ -16,6 +18,7 @@ that app's contexts.
 apps/<app>/      one rastrillo app per module, exactly as `rastrillo new` scaffolds it
 libs/            shared code, one module: changes/ (the change record), telemetry/ (OTel),
                  activation/ (socket activation, idle exit), doorbell/ (SSE push)
+clients/<name>/  shipped clients that are no app, one module each (none yet; ADR 0002)
 tools/           not shipped: the prompt ledger
 ops/             the local Grafana stack (observability/)
 docs/decisions/  ADRs
@@ -29,7 +32,25 @@ docs/decisions/  ADRs
   work.
 - An app never imports another app (Go's `internal/` already forbids
   it). Apps talk over HTTP, never through each other's databases.
-- Shared code goes to `libs/` only once two apps need it.
+- Shared code goes to `libs/` only once two apps need it (or an app
+  and a client).
+- A client (`clients/<name>`, ADR 0002's amendment) is its own module
+  that ships but is no app: it never imports an app, talks to it over
+  HTTP, requires `libs` by a `replace` only when it needs it, and has
+  its own `make ci` with a contract test against the real app. The
+  first one adds itself to the root gate.
+- Inside an app, split by feature from its first large context (ADR
+  0002): `internal/<app>` stays the registry (models, `BootSchema`,
+  `Tracked`/`Untracked`, the aggregated reasons and contexts, the
+  wiring of every policy between packages), the request glue features
+  share is `internal/<app>/kit`, each feature is
+  `internal/<app>/<feature>` with `Mount(r, Deps)`, and scenarios stay
+  in `internal/<app>test`. Features never import each other or root
+  (`make contexts`): a policy across packages is a function the
+  reacting context exports, taken in the source's `Deps`, wired by
+  root. blueprint2's `apps/server` ("Feature packages" in its
+  AGENTS.md) is the worked example; `apps/myapp` is small enough to
+  stay one package.
 
 ## The gate
 
@@ -46,7 +67,11 @@ same `GOTOOLCHAIN`; `make toolchain-check` holds them equal.
 1. **Vanilla rastrillo.** Hand-written handlers, server-rendered HTML,
    integer cents. No kernel, no bus, no aggregates, no event types, no
    registry. One instance is one tenant: there is no tenant table, and
-   members join by signing up on the instance.
+   members join by signing up on the instance. A tenant is one process,
+   socket-activated, that exits when idle (ADR 0005). A product with
+   central identity says so in its own AGENTS.md (blueprint2's ADR
+   0005: an identity app signs people in, and an instance holds no
+   credentials).
 
 2. **Change records** (`libs/changes`). Every write on a table in the
    app's `Tracked` (models.go) must land a `changes` row in the same
@@ -64,6 +89,37 @@ same `GOTOOLCHAIN`; `make toolchain-check` holds them equal.
    refused (`ErrUncorrelated`): work no request started opens its own
    trace with `telemetry.Start`.
 
+   **A change record is a state change that matters to the business**
+   (the owner's ruling in blueprint2, 2026-10-10). The audit trail
+   answers "what changed, and why", so a transient operation (a poll, a
+   ring, a heartbeat, a claim that only takes work, a lease running on)
+   is plumbing, never a change: it lands on an `Untracked` table, or
+   nowhere. What such an operation finds that does change state lands
+   as its own fact, under the report's entry point (a poll finds a
+   merge: `BranchMerged`). Keep a state change you want to track what
+   is going on with; drop an operation that merely happened. The cases
+   blueprint2 settled (its `docs/porting.md`, "Transient or state"):
+   plumbing are polls, a summon's ring, an agent's `working`
+   heartbeat (kept nowhere), a notification's read mark and a tracker
+   move (whose outcome is its own fact, caused by the fact that queued
+   it); kept as facts are a real job's claim and loss, the lifecycle of
+   a job that changes state outside (a tracker comment, a pull request
+   readied), a role reaffirmed and elements pinned.
+
+   A change can also carry a **scope**, the larger thing it belongs to
+   (`kind:id`, `note:12`, `""` when unscoped), set where the Trail opens
+   with `Within`, or `WithinCreated("note")` when the thing is the row
+   the Trail's next write creates; every change the Trail records
+   carries it, deletes included. `changes.InScope(ctx, db, scope,
+   afterID)` reads that thing's changes since a cursor, in id order.
+   `Policy.Admit` may refuse a write a scope does not take (a frozen
+   session's), `Policy.Committed` is told the scopes each commit landed
+   changes in (never a rollback: the doorbell's ring), and
+   `Trail.OnRecord` writes a ledger beside each change in its
+   transaction. A change made by someone acting as another (a platform
+   admin as a member) keeps `actor` as who did it and says as whom in
+   `on_behalf_of`; `/changes` shows both.
+
    Every change also carries its **entry point**: the business name
    of what opened the write, VerbNoun in the customer's words
    (`WriteNote`, `Join`; `BankReportedTransaction` for an agent), set
@@ -80,16 +136,20 @@ same `GOTOOLCHAIN`; `make toolchain-check` holds them equal.
    code does, and `flow.json` (versioned) is what a Blueprint board
    renders from.
 
-   A correction (caused by the change it corrects) is neither a direct
-   landing nor a policy, so its entry point (`CorrectNote`) does not
-   appear in `flow.md`. That is known and accepted (ADR 0003), not a
-   bug in the extractor: do not change `flow_test.go` to make it show.
-   Change the extractor only when the map itself is wrong, and say so
-   in the commit.
+   A cause counts as a parent only within one request (ADR 0003's
+   same-request parent rule, adopted 2026-10-09). A change caused by a
+   change from an earlier request is therefore a direct landing of its
+   own entry point: a correction (`CorrectNote`), an agent fulfilling a
+   request. Same-context follow-ups inside one request are still left
+   out of the map. Change the extractor only when the map itself is
+   wrong, and say so in the commit.
 
 3. **Executable scenarios** (`internal/<app>test/*_scenario_test.go`).
    Given / When / Then in the customer's words, through the real entry
-   points. Given joins members through `/signup`; When is a form POST;
+   points. Given joins members through `/signup` (where a product has
+   central identity, Given signs them in through the real sign-in
+   routes, with a test issuer playing the identity app, blueprint2's
+   `signintest`); When is a form POST;
    Then asserts the screen (`sees`) **and** the change records that
    landed, by reason (`changed`). `scenario_test.go` is the
    vocabulary. Write the scenario before the handler.
@@ -107,8 +167,9 @@ last use of a reason means deleting the reason.
    a reason from one context on a table of another (`noBleed`, on every
    scenario's Then and on the fold), and no query may join tables of
    two contexts (`make contexts`). A context moves another's data by
-   causing a change there. Not a package split, not a context map. A
-   new table gets its context's prefix.
+   causing a change there. A context lives in exactly one package (a
+   package may hold several, and features never import each other);
+   not a context map. A new table gets its context's prefix.
 
 5. **Telemetry is structural** (`libs/telemetry`: chi middleware plus
    GORM callbacks), so a new route or table needs nothing else. Every
@@ -155,8 +216,11 @@ Decider for a flow whose `if` chains rot.
   that cannot work without JavaScript is an island, named as the one
   exception in that app's AGENTS.md, with a read-only fallback.
 - A durable inbox is a table, not rastrillo `jobs` (which is
-  in-memory), and plumbing tables (an inbox, a tick ledger) go in
-  `Untracked` with the reason: what they did lands on tracked tables.
+  in-memory), and plumbing tables (an inbox, a tick ledger, a poll's
+  queue) go in `Untracked` with the reason: what they did lands on
+  tracked tables. A tracked table cannot hold a transient row (the
+  guard refuses an undeclared write, and `verify` a row no change
+  explains), so a transient kind of work gets its own untracked table.
 
 ## Adding an app
 

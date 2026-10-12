@@ -216,9 +216,6 @@ Each with the trigger that brings it in:
   inline in AGENTS.md, fix printed under every failure, corrections
   shown in the doc). Trigger: the first time a `docs/flow.md` diff
   shows a wrong shape that review missed.
-- **The same-request parent rule for corrections** (a cause counts
-  as a parent only if it comes from the same request), which makes
-  R2 stricter. Only if blocking is ever adopted.
 - **Suggesting exact command and event names in asks.** Likely to
   raise reuse, not measured. A 5-run D round with named hints would
   settle it.
@@ -277,6 +274,35 @@ Nothing is enforced.
      refusal lands no change row, so it needs its own record: a span
      event or log line naming the rule and the entry point, which the
      scenario collector picks up.
+
+## Amendment, 2026-10-09: the same-request parent rule is adopted
+
+This rule was held in reserve above, as a cause that counts as a
+parent only if it comes from the same request, to be adopted only
+with blocking rules. It is now adopted without them, for the map
+alone.
+
+Blueprint2's admin app found it: `OrgProvisioned` is caused by the `OrgRequested` it fulfils,
+which an earlier request (the sign-up) landed. Without the rule, its
+entry point `ProvisionerTicked` was neither a direct landing nor a
+policy, so it was missing from the map. Corrections had the same
+shape, and that omission had been accepted. An entry point missing
+from the map makes the map wrong, which this ADR's own line allows
+the extractor to be changed for. An agent fulfilling a request is not
+a correction.
+
+- `parentOf` resolves a cause only within the same request (same
+  correlation id). A change caused by a change from an earlier
+  request is a direct landing of its own entry point, as a request
+  cause is. `CorrectNote` (here, `apps/myapp`) and `ProvisionerTicked`
+  (blueprint2's admin) now appear in their apps' maps.
+- A cause naming a change that is not in the records keeps its old
+  treatment (neither direct nor a policy).
+- Nothing is enforced: no gate refuses a shape. The rest of this
+  decision stands.
+
+Owner's decision, 2026-10-09, in blueprint2; carried into this
+starter 2026-10-12 (RS-6).
 
 ## Supersedes nothing
 
