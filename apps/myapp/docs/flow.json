@@ -36,9 +36,13 @@
       "scenarios": [
         "TestScenarioANoteKeepsItsOwnHistory",
         "TestScenarioANoteWithoutATitleIsRefused",
+        "TestScenarioAReconnectCatchesUp",
+        "TestScenarioARolledBackWriteRingsNothing",
         "TestScenarioCorrectingANote",
         "TestScenarioJoining",
-        "TestScenarioWritingANote"
+        "TestScenarioTheNotesPageSaysWhatRefreshesIt",
+        "TestScenarioWritingANote",
+        "TestScenarioWritingANoteRingsEveryNotesPage"
       ]
     }
   ],
@@ -66,9 +70,13 @@
       "scenarios": [
         "TestScenarioANoteKeepsItsOwnHistory",
         "TestScenarioANoteWithoutATitleIsRefused",
+        "TestScenarioAReconnectCatchesUp",
+        "TestScenarioARolledBackWriteRingsNothing",
         "TestScenarioCorrectingANote",
         "TestScenarioJoining",
-        "TestScenarioWritingANote"
+        "TestScenarioTheNotesPageSaysWhatRefreshesIt",
+        "TestScenarioWritingANote",
+        "TestScenarioWritingANoteRingsEveryNotesPage"
       ]
     },
     {
@@ -81,8 +89,12 @@
       "then": [],
       "scenarios": [
         "TestScenarioANoteKeepsItsOwnHistory",
+        "TestScenarioAReconnectCatchesUp",
+        "TestScenarioARolledBackWriteRingsNothing",
         "TestScenarioCorrectingANote",
-        "TestScenarioWritingANote"
+        "TestScenarioTheNotesPageSaysWhatRefreshesIt",
+        "TestScenarioWritingANote",
+        "TestScenarioWritingANoteRingsEveryNotesPage"
       ]
     }
   ],

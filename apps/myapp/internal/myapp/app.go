@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -17,6 +18,7 @@ import (
 	"amadan.net/rastrillo/rastrillo/sessions"
 
 	"myproject/libs/changes"
+	"myproject/libs/doorbell"
 	"myproject/libs/telemetry"
 )
 
@@ -49,10 +51,18 @@ func Router(d *db.DB, origin string, logger *slog.Logger) (chi.Router, error) {
 	logger.Info("migrate", "applied", migrated.Applied,
 		"skipped", migrated.Skipped, "adopted", migrated.Adopted)
 
+	// Committed rings the doorbell (libs/doorbell, ADR 0004): after a
+	// commit landed changes within a note, never for a rollback. The
+	// bell closes when the process drains, so Serve's shutdown is not
+	// held open by streams.
+	bell := doorbell.NewBell(maxStreams)
+	go func() { <-doorbell.Draining(); bell.Close() }()
+
 	// Every write on a tracked table must be explained (libs/changes).
 	// Installed on the one *gorm.DB every handler writes through, so
 	// there is no unhooked path.
-	if err := changes.Install(d.G, changes.Policy{Tracked: Tracked, Exempt: TrackedExempt, Correlation: Correlation}); err != nil {
+	if err := changes.Install(d.G, changes.Policy{Tracked: Tracked, Exempt: TrackedExempt, Correlation: Correlation,
+		Committed: ringNotes(bell)}); err != nil {
 		return nil, err
 	}
 	// Every statement on the same handle gets a span and a duration
@@ -69,7 +79,7 @@ func Router(d *db.DB, origin string, logger *slog.Logger) (chi.Router, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &app{db: d, logger: logger, sess: sess}
+	a := &app{db: d, logger: logger, sess: sess, bell: bell}
 
 	ph, err := password.New(password.Config{
 		Sessions:     sess,
@@ -104,6 +114,7 @@ func Router(d *db.DB, origin string, logger *slog.Logger) (chi.Router, error) {
 		r.Group(func(r chi.Router) {
 			r.Use(sess.Require)
 			r.Get("/", a.notes)
+			r.Get("/notes/events", a.notesEvents)
 			r.Get("/notes/new", a.noteNew)
 			r.Post("/notes", a.noteCreate)
 			r.Get("/notes/{id}/correct", a.noteCorrectNew)
@@ -117,6 +128,25 @@ func Router(d *db.DB, origin string, logger *slog.Logger) (chi.Router, error) {
 	// evidence to demand and no session. Each opens its own Trail with
 	// actor agent:<name>.
 	return r, nil
+}
+
+// maxStreams caps the doorbell streams one process holds open: one per
+// open notes page. Past it a page still works, and says to reload.
+const maxStreams = 256
+
+// ringNotes is the doorbell's ring: a change within a note ("note:12")
+// rings that note's listeners and the notes list's (NotesList), which
+// shows every note.
+func ringNotes(bell *doorbell.Bell) func(scopes []string) {
+	return func(scopes []string) {
+		for _, s := range scopes {
+			if strings.HasPrefix(s, "note:") {
+				scopes = append(scopes[:len(scopes):len(scopes)], NotesList) // a copy: the slice is libs/changes'
+				break
+			}
+		}
+		bell.Ring(scopes)
+	}
 }
 
 // Mux mounts the static files beside the router.

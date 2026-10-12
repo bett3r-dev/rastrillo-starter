@@ -67,9 +67,23 @@ func (a *app) render(w http.ResponseWriter, r *http.Request, name, title string,
 	renderPage(w, name, pg)
 }
 
+// renderFragment executes one block of name's page, without the
+// layout: what a [data-live] element re-fetches (Rastrillo-Fragment: 1).
+func (a *app) renderFragment(w http.ResponseWriter, r *http.Request, name, block string, data any) {
+	pg := Page{Path: r.URL.Path, Data: data}
+	if m, ok := a.member(r); ok {
+		pg.Member = &m
+	}
+	renderBlock(w, name, block, pg)
+}
+
 func renderPage(w http.ResponseWriter, name string, pg Page) {
+	renderBlock(w, name, "layout", pg)
+}
+
+func renderBlock(w http.ResponseWriter, name, block string, pg Page) {
 	var buf bytes.Buffer
-	if err := pages[name].ExecuteTemplate(&buf, "layout", pg); err != nil {
+	if err := pages[name].ExecuteTemplate(&buf, block, pg); err != nil {
 		http.Error(w, "something went wrong", http.StatusInternalServerError)
 		return
 	}

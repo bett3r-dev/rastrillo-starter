@@ -20,6 +20,7 @@ import (
 	"amadan.net/rastrillo/rastrillo/sessions"
 
 	"myproject/libs/changes"
+	"myproject/libs/doorbell"
 )
 
 // app holds what every handler needs.
@@ -27,6 +28,7 @@ type app struct {
 	db     *db.DB
 	logger *slog.Logger
 	sess   *sessions.Sessions
+	bell   *doorbell.Bell
 }
 
 // trail opens the request's change Trail with its actor and its entry
@@ -159,11 +161,46 @@ func (a *app) notes(w http.ResponseWriter, r *http.Request) {
 	for _, m := range ms {
 		names[m.ID] = m.Name
 	}
-	rows := make([]noteRow, 0, len(ns))
+	list := notesList{Head: a.notesHead(r.Context())}
 	for _, n := range ns {
-		rows = append(rows, noteRow{ID: n.ID, Title: n.Title, Body: n.Body, Author: names[n.AuthorID]})
+		list.Rows = append(list.Rows, noteRow{ID: n.ID, Title: n.Title, Body: n.Body, Author: names[n.AuthorID]})
 	}
-	a.render(w, r, "notes", "Notes", rows)
+	w.Header().Add("Vary", "Rastrillo-Fragment")
+	if r.Header.Get("Rastrillo-Fragment") == "1" {
+		a.renderFragment(w, r, "notes", "notes-list", list)
+		return
+	}
+	a.render(w, r, "notes", "Notes", list)
+}
+
+// notesList is the notes page: its rows, and the head it was rendered
+// at, which the page's doorbell starts from (?after=).
+type notesList struct {
+	Rows []noteRow
+	Head int64
+}
+
+// NotesList is the doorbell key of the notes list: rung by any change
+// within a note (ringNotes). It is the bell's key, not a change scope.
+const NotesList = "notes"
+
+// notesHead is the latest change id within any note: what the notes
+// list has seen. A welcome note is outside every note's scope (the
+// join's Trail writes it), so it moves nothing here.
+func (a *app) notesHead(ctx context.Context) int64 {
+	var head int64
+	a.db.G.WithContext(ctx).Model(&changes.Change{}).Where("scope LIKE 'note:%'").
+		Select("COALESCE(MAX(id), 0)").Scan(&head)
+	return head
+}
+
+// notesEvents is GET /notes/events, the notes list's doorbell (ADR
+// 0004): "update", id and data the notes' head, whenever a commit
+// lands changes within a note. It carries no payload: the page
+// re-fetches its list as a fragment (static/live.js). Anyone signed in
+// may listen, as anyone signed in may read the list.
+func (a *app) notesEvents(w http.ResponseWriter, r *http.Request) {
+	doorbell.Stream(w, r, a.bell, NotesList, func() int64 { return a.notesHead(r.Context()) })
 }
 
 type noteForm struct {

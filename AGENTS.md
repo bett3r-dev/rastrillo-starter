@@ -6,7 +6,7 @@ The why is `docs/decisions/0001-conventions.md`; the layout is
 `docs/decisions/0002-monorepo-layout.md`; the flow map is
 `docs/decisions/0003-flow-chain-extracted-not-enforced.md`; push to
 the browser, when an app needs it, is
-`docs/decisions/0004-real-time-sse-doorbell.md` (proposed). Each app's own `AGENTS.md`
+`docs/decisions/0004-real-time-sse-doorbell.md` (`libs/doorbell`). Each app's own `AGENTS.md`
 (`apps/<app>/AGENTS.md`) holds rastrillo's scaffold conventions and
 that app's contexts.
 
@@ -15,7 +15,7 @@ that app's contexts.
 ```
 apps/<app>/      one rastrillo app per module, exactly as `rastrillo new` scaffolds it
 libs/            shared code, one module: changes/ (the change record), telemetry/ (OTel),
-                 activation/ (socket activation, idle exit)
+                 activation/ (socket activation, idle exit), doorbell/ (SSE push)
 tools/           not shipped: the prompt ledger
 ops/             the local Grafana stack (observability/)
 docs/decisions/  ADRs
@@ -147,8 +147,11 @@ Decider for a flow whose `if` chains rot.
   `agent:<name>`. They are bearer-authenticated POSTs under `/agent/`,
   outside the browser group (no CSRF evidence, no session).
 - Push to the browser, when an app needs it, is SSE as a doorbell
-  (ADR 0004): writes stay POSTs, an event only says something changed
-  and carries the latest change id, and the client re-fetches. A screen
+  (ADR 0004, `libs/doorbell`): writes stay POSTs, an event only says
+  something changed and carries the latest change id, and the client
+  (`live.js`, vendored as `static/live.js`) re-fetches each `[data-live]`
+  fragment. `Policy.Committed` rings the bell, so a rollback rings
+  nothing; `apps/myapp`'s notes list is the example. A screen
   that cannot work without JavaScript is an island, named as the one
   exception in that app's AGENTS.md, with a read-only fallback.
 - A durable inbox is a table, not rastrillo `jobs` (which is

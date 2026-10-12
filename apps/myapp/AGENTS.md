@@ -15,7 +15,7 @@ contexts and rastrillo's scaffold conventions.
 One cross-context policy: `MemberJoined[accounts] ⟹
 WelcomeNoteWritten[notes]`, the welcome note written in the joining
 transaction and caused by the join. `docs/flow.md` is the map
-(`make flow`); entry points are `Join`, `WriteNote`, `CorrectNote`.
+(`make flow`); entry points are `Join`, `WriteNote`, `CorrectNote`. The notes list is live: `GET /notes/events` rings when a change lands within a note (ADR 0004).
 
 ---
 
