@@ -166,6 +166,23 @@ var ErrNotAdmitted = errors.New("changes: the scope does not take this write")
 // wrong reason.
 var ErrReasonMismatch = errors.New("changes: reason does not fit the write")
 
+// ErrUndeclaredTable is Install's refusal at boot of a table that is
+// neither tracked, untracked with a reason, nor plumbing: a migration
+// that adds a table nobody decided to explain or not stops the app
+// before it serves, with every such table named.
+var ErrUndeclaredTable = errors.New("changes: table is neither tracked, untracked with a reason, nor plumbing")
+
+// Plumbing is the tables no app declares, each with the reason it is
+// not explained: this package's own and rastrillo's core, and
+// SQLite's internal sqlite_* tables, which the census leaves out by
+// name. A table a rastrillo plugin creates (passkey, auth, pow) is the
+// app's to declare in Policy.Untracked, since the app chose it.
+var Plumbing = map[string]string{
+	"changes":              "the change record itself; append-only by trigger",
+	"rastrillo_migrations": "rastrillo's migration ledger",
+	"sessions":             "rastrillo's session store; signing in is not a business fact",
+}
+
 var scopeFormat = regexp.MustCompile(`^[a-z][a-z0-9_-]*:\S+$`)
 
 var scopeKind = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
@@ -396,6 +413,11 @@ type Policy struct {
 	// carries a column outside the list, is refused before SQLite
 	// (ErrReasonMismatch). Nil turns the check off.
 	Allow map[string]Writes
+	// Untracked is every table whose writes are not explained, each
+	// with the reason it is plumbing (an inbox, a tick ledger). With
+	// Tracked and Plumbing it is the census Install takes at boot: a
+	// table in none of them is refused (ErrUndeclaredTable).
+	Untracked map[string]string
 }
 
 // Writes is one reason's declaration: table -> the columns it writes.
@@ -416,9 +438,19 @@ type Writes map[string][]string
 // migration runs before Install and another process's connection
 // never sees the trigger, so those two paths are not covered, and
 // the fold check (Verify) is what catches them after the fact.
+//
+// Before any of that, the boot census: every table in the database
+// must be tracked, untracked with a reason (Policy.Untracked) or
+// plumbing (Plumbing), or Install refuses with each leftover named
+// (ErrUndeclaredTable), so a migration that adds an undeclared table
+// cannot ship. Migrations run before Install, so the census sees the
+// schema the app is about to serve.
 func Install(g *gorm.DB, p Policy) error {
 	if p.Correlation == nil {
 		return errors.New("changes: Policy.Correlation is required")
+	}
+	if err := census(g, p); err != nil {
+		return err
 	}
 	set := map[string]bool{}
 	for _, t := range p.Tracked {
@@ -648,6 +680,27 @@ func guard(g *gorm.DB, p Policy) error {
 				return fmt.Errorf("changes: guard %s %s: %w", t, op, err)
 			}
 		}
+	}
+	return nil
+}
+
+// census refuses the tables in the main database that p does not
+// declare, every one of them named in one error.
+func census(g *gorm.DB, p Policy) error {
+	var tables []string
+	if err := g.Raw("SELECT name FROM main.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name").Scan(&tables).Error; err != nil {
+		return fmt.Errorf("changes: census: %w", err)
+	}
+	var undeclared []string
+	for _, t := range tables {
+		_, untracked := p.Untracked[t]
+		_, plumbing := Plumbing[t]
+		if !slices.Contains(p.Tracked, t) && !untracked && !plumbing {
+			undeclared = append(undeclared, t)
+		}
+	}
+	if len(undeclared) > 0 {
+		return fmt.Errorf("%w: %s; put each in Tracked, or in Untracked with the reason it is plumbing", ErrUndeclaredTable, strings.Join(undeclared, ", "))
 	}
 	return nil
 }

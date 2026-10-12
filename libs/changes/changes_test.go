@@ -814,3 +814,38 @@ func TestTheAllowListReadsAJSONTaggedDiffAsItsColumns(t *testing.T) {
 		t.Fatalf("an update of esId under a reason without element_key: err = %v, want ErrReasonMismatch naming taggeds.element_key", err)
 	}
 }
+
+// The boot census: a table nobody declared stops Install, named, and
+// declaring it (untracked, with the reason) lets the same database
+// boot. Plumbing (changes) and SQLite's own tables need no line.
+func TestInstallRefusesAnUndeclaredTableByName(t *testing.T) {
+	t.Parallel()
+	d, err := db.Open(filepath.Join(t.TempDir(), "c.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	if err := d.G.AutoMigrate(&changes.Change{}, &probe{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		"CREATE TABLE planted_inbox (id INTEGER PRIMARY KEY AUTOINCREMENT)",
+		"CREATE TABLE planted_ledger (id INTEGER PRIMARY KEY)",
+	} {
+		if err := d.G.Exec(stmt).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := changes.Policy{Tracked: []string{"probes"}, Correlation: correlation}
+	err = changes.Install(d.G, p)
+	if !errors.Is(err, changes.ErrUndeclaredTable) || !strings.Contains(err.Error(), "planted_inbox, planted_ledger") {
+		t.Fatalf("Install with two undeclared tables: err = %v, want ErrUndeclaredTable naming both", err)
+	}
+	if strings.Contains(err.Error(), "sqlite_sequence") || strings.Contains(err.Error(), "probes") {
+		t.Fatalf("the census named a declared or internal table: %v", err)
+	}
+	p.Untracked = map[string]string{"planted_inbox": "an inbox", "planted_ledger": "a tick ledger"}
+	if err := changes.Install(d.G, p); err != nil {
+		t.Fatalf("Install with both declared untracked: %v", err)
+	}
+}

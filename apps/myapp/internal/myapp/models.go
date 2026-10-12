@@ -16,8 +16,9 @@ var Models = []any{
 // Tracked is every table whose writes must be explained by a change
 // record (changes.Install). members is tracked too: signing up is a
 // business fact. Every table in the database is in exactly one of
-// Tracked and Untracked; TestEveryTableIsTrackedOrDeclaredNot holds
-// it, so a new table has to be placed on purpose.
+// Tracked and Untracked: changes.Install refuses at boot a table in
+// neither (the boot census), and TestEveryTableIsTrackedOrDeclaredNot
+// holds it first, so a new table has to be placed on purpose.
 var Tracked = []string{"members", "notes"}
 
 // Untracked is every table whose writes are not explained, each with

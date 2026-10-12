@@ -72,7 +72,9 @@ Decider (`decide`/`evolve`, one file) for a flow whose `if` chains rot.
 - Reason names are facts in the customer's words, past tense; never
   `Updated`, `Edited`, `Modified` (`TestReasonsAreFactsNotTimestamps`).
 - Every table is in exactly one of `Tracked` and `Untracked`, and an
-  untracked one says why (`TestEveryTableIsTrackedOrDeclaredNot`).
+  untracked one says why (`TestEveryTableIsTrackedOrDeclaredNot`,
+  and at boot `changes.Install`, which refuses an undeclared table
+  by name).
 - A secret column is written in a second step and listed in
   `TrackedExempt`, so no diff carries it.
 - Agents (a webhook, a schedule tick) open their own Trail with actor

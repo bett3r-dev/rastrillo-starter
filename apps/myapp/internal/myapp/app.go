@@ -62,7 +62,9 @@ func Router(d *db.DB, origin string, logger *slog.Logger) (chi.Router, error) {
 	// by a reason that declares the table and columns it writes
 	// (ReasonWrites). Installed on the one *gorm.DB every handler
 	// writes through, so there is no unhooked path.
-	if err := changes.Install(d.G, changes.Policy{Tracked: Tracked, Exempt: TrackedExempt, Correlation: Correlation,
+	// Install also takes the boot census: a table in neither Tracked
+	// nor Untracked stops the app here, named.
+	if err := changes.Install(d.G, changes.Policy{Tracked: Tracked, Untracked: Untracked, Exempt: TrackedExempt, Correlation: Correlation,
 		Allow: ReasonWrites, Committed: ringNotes(bell)}); err != nil {
 		return nil, err
 	}
