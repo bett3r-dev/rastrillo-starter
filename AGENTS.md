@@ -285,9 +285,11 @@ needs amadan.
   characters) and token usage. The post-commit hook (`.githooks/`,
   wired by `make ledger-install`) marks each commit. Neither fails a
   turn or a commit; what goes wrong is in `.git/amadan-ledger/errors.log`.
-- Land a branch with `go -C tools run ./cmd/ledger merge -squash -m '<msg>' <branch>`,
-  not `git merge`: it carries the branch's prompts into the commit and
-  marks the merge. A plain `git merge` loses both.
+- Land a branch with `go -C tools run ./cmd/ledger merge -m '<msg>' <branch>`,
+  not `git merge`: a merge commit (`--no-ff`) that keeps the branch's
+  commits and marks the merge in the ledger. A plain `git merge` loses
+  the mark. Never squash (the owner's ruling, 2026-10-12): the
+  branch's commits are the history.
 - Read it with `go -C tools run ./cmd/ledger log [branch]`. Send it
   with `make ledger-push LEDGER_REMOTE=<remote>`, to every remote.
 - Records are never rewritten or deleted, like `changes`. A tool call's
