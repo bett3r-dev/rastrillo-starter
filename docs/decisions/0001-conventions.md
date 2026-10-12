@@ -79,3 +79,16 @@ Decider (`decide`/`evolve`, one file) for a flow whose `if` chains rot.
   `agent:<name>`, as bearer-authenticated POSTs under `/agent/`.
 - Work no request started opens its own trace with `telemetry.Start`,
   or its tracked writes are refused (`ErrUncorrelated`).
+
+## Amendment, 2026-10-12: the allow-list is on (RS-7)
+
+The allow-list's trigger fired in gastos (commit `d5f935d`, 2026-10-09):
+its mutation drill planted a wrong reason from the right context
+(mutant M8b), and every scenario, `noBleed` and the fold still passed.
+It is on here too: each reason declares, per table, the columns its
+change's diff may carry (`<context>Writes`, `ReasonWrites`,
+`changes.Policy.Allow`), and the hook refuses anything else before
+SQLite (`ErrReasonMismatch`). "Given up: enforcement that a wrong
+change cannot happen" now reads: a wrong change that stays inside its
+reason's declared columns can still happen. The Decider stays in
+reserve.

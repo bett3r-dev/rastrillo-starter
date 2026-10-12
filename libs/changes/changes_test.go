@@ -720,3 +720,57 @@ func TestOnRecordWritesWithTheChangeOrNotAtAll(t *testing.T) {
 		t.Fatalf("changes %v, ledger %v: want the kept batch's two in both", ids, ledger)
 	}
 }
+
+// The allow-list: a reason writes only the tables and columns it
+// declares. A wrong reason is refused before SQLite, with the reason,
+// the table and the column named.
+func TestAWriteItsReasonDoesNotDeclareIsRefused(t *testing.T) {
+	t.Parallel()
+	d, err := db.Open(filepath.Join(t.TempDir(), "c.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	g := d.G
+	if err := g.AutoMigrate(&changes.Change{}, &probe{}); err != nil {
+		t.Fatal(err)
+	}
+	allow := map[string]changes.Writes{
+		"ProbeRecorded": {"probes": {"id", "name", "cents"}},
+		"ProbeRenamed":  {"probes": {"name"}},
+		"OtherRecorded": {"others": {"id"}},
+	}
+	if err := changes.Install(g, changes.Policy{Tracked: []string{"probes"}, Correlation: correlation, Allow: allow}); err != nil {
+		t.Fatal(err)
+	}
+	write := func(reason string, f func(*gorm.DB) error) error {
+		return f(g.WithContext(changes.Begin("human").Because(reason, "").Context(inRequest("req-1"))))
+	}
+	p := probe{Name: "x", Cents: 1}
+	if err := write("ProbeRecorded", func(g *gorm.DB) error { return g.Create(&p).Error }); err != nil {
+		t.Fatalf("declared create: %v", err)
+	}
+	if err := write("ProbeRenamed", func(g *gorm.DB) error { return g.Model(&p).Update("name", "y").Error }); err != nil {
+		t.Fatalf("declared update: %v", err)
+	}
+	for _, c := range []struct {
+		reason, want string
+		f            func(*gorm.DB) error
+	}{
+		{"OtherRecorded", "OtherRecorded does not write probes (it writes others)", func(g *gorm.DB) error { return g.Create(&probe{Name: "z"}).Error }},
+		{"ProbeRenamed", "ProbeRenamed does not write probes.cents", func(g *gorm.DB) error { return g.Model(&p).Update("cents", 9).Error }},
+		{"ProbeRenamed", "ProbeRenamed does not write probes.cents", func(g *gorm.DB) error { return g.Create(&probe{Name: "z"}).Error }},
+		{"Undeclared", "Undeclared does not write probes", func(g *gorm.DB) error { return g.Delete(&p).Error }},
+	} {
+		err := write(c.reason, c.f)
+		if !errors.Is(err, changes.ErrReasonMismatch) || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err = %v, want ErrReasonMismatch naming %q", c.reason, err, c.want)
+		}
+	}
+	var n, m int64
+	g.Model(&probe{}).Count(&n)
+	g.Model(&changes.Change{}).Count(&m)
+	if n != 1 || m != 2 {
+		t.Fatalf("a refused write landed: %d probes, %d changes; want 1 and 2", n, m)
+	}
+}

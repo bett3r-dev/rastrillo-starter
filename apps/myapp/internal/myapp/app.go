@@ -58,11 +58,12 @@ func Router(d *db.DB, origin string, logger *slog.Logger) (chi.Router, error) {
 	bell := doorbell.NewBell(maxStreams)
 	go func() { <-doorbell.Draining(); bell.Close() }()
 
-	// Every write on a tracked table must be explained (libs/changes).
-	// Installed on the one *gorm.DB every handler writes through, so
-	// there is no unhooked path.
+	// Every write on a tracked table must be explained (libs/changes),
+	// by a reason that declares the table and columns it writes
+	// (ReasonWrites). Installed on the one *gorm.DB every handler
+	// writes through, so there is no unhooked path.
 	if err := changes.Install(d.G, changes.Policy{Tracked: Tracked, Exempt: TrackedExempt, Correlation: Correlation,
-		Committed: ringNotes(bell)}); err != nil {
+		Allow: ReasonWrites, Committed: ringNotes(bell)}); err != nil {
 		return nil, err
 	}
 	// Every statement on the same handle gets a span and a duration

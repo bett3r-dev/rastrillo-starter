@@ -1,6 +1,10 @@
 package myapp
 
-import "slices"
+import (
+	"slices"
+
+	"myproject/libs/changes"
+)
 
 // The reason vocabulary: every business-language name a change record
 // may carry, declared per context in reasons_<context>.go. Those
@@ -29,6 +33,17 @@ var Contexts = map[string][]string{
 	ContextNotes:    notesTables,
 }
 
+// Writes is one reason's declaration of what it may write: table ->
+// the columns its change's diff may carry. Declared per context in
+// reasons_<context>.go, beside the reasons.
+type Writes = changes.Writes
+
+// ReasonWrites is every reason's Writes, the allow-list changes.Install
+// enforces (Policy.Allow): a write whose table or columns the reason
+// does not declare is refused (ErrReasonMismatch). TestEveryReasonDeclaresWhatItWrites
+// holds it to the vocabulary.
+var ReasonWrites = map[string]Writes{}
+
 var reasonContexts = map[string]string{}
 
 func init() {
@@ -37,6 +52,11 @@ func init() {
 	}
 	for _, r := range notesReasons {
 		reasonContexts[r] = ContextNotes
+	}
+	for _, w := range []map[string]Writes{accountsWrites, notesWrites} {
+		for r, tables := range w {
+			ReasonWrites[r] = tables
+		}
 	}
 }
 

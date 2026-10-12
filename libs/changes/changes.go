@@ -43,6 +43,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -156,6 +157,13 @@ var ErrScopePending = errors.New("changes: Trail is within the row it creates ne
 // scope does not take (Policy.Admit said no): a frozen session's, say.
 // It wraps Admit's own error, so errors.Is finds either.
 var ErrNotAdmitted = errors.New("changes: the scope does not take this write")
+
+// ErrReasonMismatch is the refusal of a write its reason does not
+// fit: a table the reason does not declare, or a column on it the
+// reason does not declare (Policy.Allow). A right-context reason on
+// the wrong row (a correction written as NoteWritten) is still a
+// wrong reason.
+var ErrReasonMismatch = errors.New("changes: reason does not fit the write")
 
 var scopeFormat = regexp.MustCompile(`^[a-z][a-z0-9_-]*:\S+$`)
 
@@ -381,7 +389,16 @@ type Policy struct {
 	// the use. Unscoped changes are not told. Left nil, the handle's
 	// pool is not wrapped.
 	Committed func(scopes []string)
+	// Allow is what each reason may write: per table, the columns its
+	// change's diff may carry, by column name. A write whose reason is
+	// not here, whose table the reason does not name, or whose diff
+	// carries a column outside the list, is refused before SQLite
+	// (ErrReasonMismatch). Nil turns the check off.
+	Allow map[string]Writes
 }
+
+// Writes is one reason's declaration: table -> the columns it writes.
+type Writes map[string][]string
 
 // Install registers the callbacks on g for the policy's tracked
 // tables and installs the database half of the same rule. Call once
@@ -451,6 +468,10 @@ func require(db *gorm.DB, tracked map[string]bool, p Policy, op string) {
 		_ = db.AddError(fmt.Errorf("%w: %s %s", ErrUnexplained, op, st.Table))
 		return
 	}
+	if err := p.fits(st, t.reason, op); err != nil {
+		_ = db.AddError(err)
+		return
+	}
 	if t.scopeErr != nil {
 		_ = db.AddError(fmt.Errorf("%w (%s %s)", t.scopeErr, op, st.Table))
 		return
@@ -505,6 +526,60 @@ func require(db *gorm.DB, tracked map[string]bool, p Policy, op string) {
 	if err := sess.Exec("INSERT INTO changes_intent (entity) VALUES (?)", st.Table).Error; err != nil {
 		_ = db.AddError(err)
 	}
+}
+
+// fits refuses a write its reason does not declare: the table, then
+// each column the change's diff will carry (the same diffOf record
+// writes, keys turned into column names by the schema).
+func (p Policy) fits(st *gorm.Statement, reason, op string) error {
+	if p.Allow == nil {
+		return nil
+	}
+	cols, ok := p.Allow[reason][st.Table]
+	if !ok {
+		var tables []string
+		for t := range p.Allow[reason] {
+			tables = append(tables, t)
+		}
+		slices.Sort(tables)
+		return fmt.Errorf("%w: %s does not write %s (it writes %s)", ErrReasonMismatch, reason, st.Table, strings.Join(tables, ", "))
+	}
+	for _, row := range rowsOf(st) {
+		var diff map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(diffOf(st.Dest, row, op)), &diff); err != nil {
+			return fmt.Errorf("%w: %s on %s: %v", ErrReasonMismatch, reason, st.Table, err)
+		}
+		keys := make([]string, 0, len(diff))
+		for k := range diff {
+			if f := st.Schema.LookUpField(k); f != nil && f.DBName != "" {
+				k = f.DBName
+			}
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
+			if !slices.Contains(cols, k) {
+				return fmt.Errorf("%w: %s does not write %s.%s", ErrReasonMismatch, reason, st.Table, k)
+			}
+		}
+	}
+	return nil
+}
+
+// rowsOf is the statement's rows: one, or each of a slice.
+func rowsOf(st *gorm.Statement) []reflect.Value {
+	rv := st.ReflectValue
+	for rv.Kind() == reflect.Ptr {
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
+		return []reflect.Value{rv}
+	}
+	rows := make([]reflect.Value, 0, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		rows = append(rows, rv.Index(i))
+	}
+	return rows
 }
 
 // rowCount is how many rows a statement's value holds: a slice's
@@ -595,20 +670,7 @@ func record(db *gorm.DB, tracked map[string]bool, op string, committed func([]st
 		return // require already refused it
 	}
 	root := t.requestID
-	rv := st.ReflectValue
-	for rv.Kind() == reflect.Ptr {
-		rv = rv.Elem()
-	}
-	var rows []reflect.Value
-	switch rv.Kind() {
-	case reflect.Slice, reflect.Array:
-		for i := 0; i < rv.Len(); i++ {
-			rows = append(rows, rv.Index(i))
-		}
-	default:
-		rows = append(rows, rv)
-	}
-	for _, row := range rows {
+	for _, row := range rowsOf(st) {
 		var id int64
 		if pk := st.Schema.PrioritizedPrimaryField; pk != nil {
 			if v, zero := pk.ValueOf(st.Context, row); !zero {

@@ -28,3 +28,19 @@ var notesReasons = []string{
 	ReasonNoteCorrected,
 	ReasonWelcomeNoteWritten,
 }
+
+// notesWrites is what each reason may write: per table, the columns
+// its change's diff may carry (changes.Policy.Allow). A write outside
+// it is refused (ErrReasonMismatch). A correction writes the text
+// forward and nothing else: who wrote the note stays who wrote it.
+var notesWrites = map[string]Writes{
+	ReasonNoteWritten: {
+		"notes": {"id", "author_id", "title", "body", "created_at", "updated_at"},
+	},
+	ReasonNoteCorrected: {
+		"notes": {"title", "body"},
+	},
+	ReasonWelcomeNoteWritten: {
+		"notes": {"id", "author_id", "title", "body", "created_at", "updated_at"},
+	},
+}

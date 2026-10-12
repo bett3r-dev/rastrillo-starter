@@ -89,6 +89,18 @@ same `GOTOOLCHAIN`; `make toolchain-check` holds them equal.
    refused (`ErrUncorrelated`): work no request started opens its own
    trace with `telemetry.Start`.
 
+   Each reason also declares **what it writes**: per table, the columns
+   its change's diff may carry (`<context>Writes` beside the reasons in
+   `reasons_<context>.go`, gathered in `ReasonWrites`, installed as
+   `Policy.Allow`). A write whose table or column its reason does not
+   declare is refused before SQLite (`ErrReasonMismatch`), naming the
+   reason, the table and the column: the right context's reason on the
+   wrong write (gastos's mutant M8b) passes every other check.
+   `writes_test.go` holds the declaration to the vocabulary (every
+   reason declares, only its own context's tables, only real columns).
+   A create's diff is the whole row, so a reason that creates lists
+   every column.
+
    **A change record is a state change that matters to the business**
    (the owner's ruling in blueprint2, 2026-10-10). The audit trail
    answers "what changed, and why", so a transient operation (a poll, a
@@ -180,9 +192,8 @@ last use of a reason means deleting the reason.
    `OTEL_EXPORTER_OTLP_ENDPOINT` is set; `make -C apps/<app> observe`
    and `observe-run` are the local Grafana stack.
 
-Held in reserve, not built: a per-reason allow-list of columns the
-hook checks (turn on when a scenario catches a wrong reason), and a
-Decider for a flow whose `if` chains rot.
+Held in reserve, not built: a Decider for a flow whose `if` chains
+rot.
 
 ## Rules on top of rastrillo's
 
@@ -231,11 +242,11 @@ with the app's gate green:
 
 1. `migrations.go`: `BootSchema = migrate.Merge(sessions.Schema, changes.Schema, Schema)`.
 2. `models.go`: `Tracked`, `Untracked` (each with its reason), `TrackedExempt`.
-3. `reasons.go` plus one `reasons_<context>.go` and `CONTEXT-<context>.md` per context.
+3. `reasons.go` (with `ReasonWrites`) plus one `reasons_<context>.go` (its reasons, tables and `<context>Writes`) and `CONTEXT-<context>.md` per context.
 4. `handlers.go`: `trail(r, entryPoint)`, and an entry point named on every Trail the app opens.
-5. `app.go`: `changes.Install`, `telemetry.DB`, `telemetry.HTTP` first, the `correlation` middleware.
+5. `app.go`: `changes.Install` (with `Allow: ReasonWrites`), `telemetry.DB`, `telemetry.HTTP` first, the `correlation` middleware.
 6. `cmd/<name>/main.go`: `telemetry.Setup`, the `Tee(Correlate(stderr), tel.Logs)` logger, `Shutdown` after `Serve`, the `verify` subcommand, and `exitWhenIdle` behind `<NAME>_IDLE_TIMEOUT` (`libs/activation`, off unset) with its test in `cmd/<name>/main_test.go`.
-7. `internal/<name>test/`: `scenario_test.go` (with `collectFlow` in `given`), `harness_test.go` (`flowGate` after `budget.Main`), `binding_test.go`, `contexts_test.go`, `conventions_test.go`, `flow_test.go`; the Makefile's `contexts`, `flow` and `flow-check` targets, the last two in `ci`; `make flow` once, and commit `docs/flow.md` and `flow.json`.
+7. `internal/<name>test/`: `scenario_test.go` (with `collectFlow` in `given`), `harness_test.go` (`flowGate` after `budget.Main`), `binding_test.go`, `contexts_test.go`, `conventions_test.go`, `flow_test.go`, `writes_test.go`; the Makefile's `contexts`, `flow` and `flow-check` targets, the last two in `ci`; `make flow` once, and commit `docs/flow.md` and `flow.json`.
 8. `make dev` and `observe` targets, the dashboard in `ops/observability/dashboards/`.
 
 ## The prompt ledger
