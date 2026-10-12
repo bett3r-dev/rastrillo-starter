@@ -38,7 +38,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null)
 # and a suite running beside it would be measured too.
 .NOTPARALLEL:
 
-.PHONY: build release version-check test vet fmt-check staticcheck govulncheck gitleaks budget perf migration-check contexts flow flow-check ci dev observe observe-run observe-down
+.PHONY: build release version-check test vet fmt-check staticcheck govulncheck gitleaks budget perf migration-check contexts flow flow-check oracle ci dev observe observe-run observe-down
 
 RASTRILLO := go run amadan.net/rastrillo/rastrillo/cmd/rastrillo
 
@@ -159,8 +159,9 @@ test:
 perf:
 	$(RASTRILLO) budget test -no-time -require TestPerfScreens,TestPerfBoot -tags perf -count=1 -p 1 -parallel 1 -run '^TestPerf' ./...
 
+# -tags oracle so the black-box scenarios (oracle/) are vetted too.
 vet:
-	go vet ./...
+	go vet -tags oracle ./...
 
 fmt-check:
 	@out=$$(gofmt -l .); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
@@ -176,9 +177,9 @@ fmt-check:
 # directive: a staticcheck older than your Go does not know that
 # release's deprecations, and says nothing.
 #
-# -tags browser,perf so the browser drive and the perf tests are read
-# too; no file is left out by them, so it covers everything the plain
-# build does.
+# -tags browser,perf,oracle so the browser drive, the perf tests and
+# the black-box scenarios are read too; no file is left out by them,
+# so it covers everything the plain build does.
 STATICCHECK := honnef.co/go/tools/cmd/staticcheck@v0.7.0
 # staticcheck keeps its cache in the user cache directory, ~/.cache,
 # which a sandboxed CI runner mounts read-only: "failed to initialize
@@ -192,7 +193,7 @@ export STATICCHECK_CACHE ?= $(GOCACHE)/staticcheck
 endif
 
 staticcheck:
-	go run $(STATICCHECK) -tags browser,perf ./...
+	go run $(STATICCHECK) -tags browser,perf,oracle ./...
 
 # govulncheck reports only the vulnerabilities your code can reach: a call
 # path, not a module that merely sits in go.sum. It reads the live
@@ -252,6 +253,16 @@ flow:
 flow-check:
 	CGO_ENABLED=0 FLOW_CHECK=1 go test -count=1 ./internal/myapptest/
 
+# The oracle: the scenarios as black-box HTTP tests (oracle/), one
+# fresh myapp process per scenario on a free port, its records read
+# through /changes.json, so the same suite can judge another binary
+# (MYAPP_ORACLE_BIN) or a running instance (MYAPP_ORACLE_URL);
+# oracle/oracle_test.go says how. It execs go build, which Go's test
+# cache cannot see, hence -count=1 and the tag that keeps it out of
+# make test. budget test holds it to the same 10s.
+oracle:
+	CGO_ENABLED=0 $(RASTRILLO) budget test -tags oracle -count=1 ./oracle/
+
 # ci is the one gate: what a runner executes and what you run before
 # pushing are the same definition. amadan's runner falls back to this
 # target when .amadan/ci is absent; ci.d/ carries the same targets,
@@ -259,4 +270,4 @@ flow-check:
 # fails the build the moment models.go and migrations/ disagree,
 # instead of at boot on whatever machine notices next. If the app
 # declares manifest resources, also add: rastrillo generate --check
-ci: vet fmt-check staticcheck govulncheck gitleaks budget test perf migration-check contexts flow-check
+ci: vet fmt-check staticcheck govulncheck gitleaks budget test perf migration-check contexts flow-check oracle

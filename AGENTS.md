@@ -56,11 +56,22 @@ docs/decisions/  ADRs
 
 `make ci` at the root: every app's own `make ci` (vet, gofmt,
 staticcheck, govulncheck, budgets, tests, the perf lane, the migration
-check, `make contexts`, `make flow-check`), then `libs` and `tools`, then gitleaks once.
+check, `make contexts`, `make flow-check`, and `make oracle` where the
+app has one), then `libs` and `tools`, then gitleaks once.
 `make -C apps/<app> ci` is one app's gate. While editing:
 `go test -short ./internal/<app>/... ./internal/<app>test/` from the
 app's directory. `CGO_ENABLED=0` throughout. Every Makefile pins the
 same `GOTOOLCHAIN`; `make toolchain-check` holds them equal.
+
+**The oracle** (`apps/<app>/oracle/`, build tag `oracle`, optional):
+the scenarios again as black-box HTTP tests, one fresh process per
+scenario on a free port, the Then read through `/changes.json`, so the
+same suite judges another binary (`<APP>_ORACLE_BIN`) or a running
+instance (`<APP>_ORACLE_URL`), and `<APP>_ORACLE_DUMP` keeps each
+scenario's records. A test package, never a program (one module root
+per app). It keeps its own copy of the vocabulary, held to
+`reasons_*.go` by a test, and every reason must appear in one of its
+Thens. `apps/myapp/oracle` is the pattern.
 
 ## The conventions, in every app
 
