@@ -7,13 +7,16 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
+	"syscall"
 	"time"
 
 	"amadan.net/rastrillo/rastrillo"
 	"amadan.net/rastrillo/rastrillo/db"
 
 	myapp "myapp/internal/myapp"
+	"myproject/libs/activation"
 	"myproject/libs/changes"
 	"myproject/libs/telemetry"
 )
@@ -97,6 +100,10 @@ func main() {
 	// the same options the perf test measures through.
 	myapp.Configure(&opts, mux, started)
 	opts.DBPath = ""
+	if err := exitWhenIdle(&opts, os.Getenv("MYAPP_IDLE_TIMEOUT"), logger); err != nil {
+		logger.Error("MYAPP_IDLE_TIMEOUT", "err", err)
+		exit(1)
+	}
 	if err := rastrillo.Serve(opts); err != nil {
 		logger.Error("serve failed", "err", err)
 		exit(1)
@@ -110,6 +117,41 @@ func main() {
 	if err := tel.Shutdown(ctx); err != nil {
 		slog.New(stderr).Error("telemetry flush", "err", err)
 	}
+}
+
+// exitWhenIdle is scale to zero (ADR 0005): with MYAPP_IDLE_TIMEOUT
+// set (a Go duration, v), the process stops itself once no request has
+// been in flight for that long; an open SSE stream is a request in
+// flight. Unset, it serves until stopped, as in development.
+//
+// The listener needs nothing here: Serve already takes a systemd
+// socket (LISTEN_FDS, fd 3). Serve has no other way to be told to
+// stop than a signal, so idle sends this process the SIGTERM systemd
+// would, and the exit is Serve's own drain and the telemetry flush
+// after it. The socket stays systemd's, so a connection that arrives
+// meanwhile waits there and starts the next process.
+func exitWhenIdle(opts *rastrillo.Options, v string, logger *slog.Logger) error {
+	if v == "" {
+		return nil
+	}
+	timeout, err := time.ParseDuration(v)
+	if err != nil || timeout <= 0 {
+		return fmt.Errorf("%q is not a positive duration", v)
+	}
+	idle := activation.NewIdle(timeout)
+	inner := opts.Wrap
+	opts.Wrap = func(h http.Handler) http.Handler {
+		if inner != nil {
+			h = inner(h)
+		}
+		return idle.Middleware(h)
+	}
+	go func() {
+		<-idle.Done()
+		logger.Info("idle; stopping", "timeout", timeout)
+		syscall.Kill(os.Getpid(), syscall.SIGTERM)
+	}()
+	return nil
 }
 
 // tenant is who this instance serves: MYAPP_TENANT, else

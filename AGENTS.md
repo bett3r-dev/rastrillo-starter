@@ -14,7 +14,8 @@ that app's contexts.
 
 ```
 apps/<app>/      one rastrillo app per module, exactly as `rastrillo new` scaffolds it
-libs/            shared code, one module: changes/ (the change record), telemetry/ (OTel)
+libs/            shared code, one module: changes/ (the change record), telemetry/ (OTel),
+                 activation/ (socket activation, idle exit)
 tools/           not shipped: the prompt ledger
 ops/             the local Grafana stack (observability/)
 docs/decisions/  ADRs
@@ -166,7 +167,7 @@ with the app's gate green:
 3. `reasons.go` plus one `reasons_<context>.go` and `CONTEXT-<context>.md` per context.
 4. `handlers.go`: `trail(r, entryPoint)`, and an entry point named on every Trail the app opens.
 5. `app.go`: `changes.Install`, `telemetry.DB`, `telemetry.HTTP` first, the `correlation` middleware.
-6. `cmd/<name>/main.go`: `telemetry.Setup`, the `Tee(Correlate(stderr), tel.Logs)` logger, `Shutdown` after `Serve`, the `verify` subcommand.
+6. `cmd/<name>/main.go`: `telemetry.Setup`, the `Tee(Correlate(stderr), tel.Logs)` logger, `Shutdown` after `Serve`, the `verify` subcommand, and `exitWhenIdle` behind `<NAME>_IDLE_TIMEOUT` (`libs/activation`, off unset) with its test in `cmd/<name>/main_test.go`.
 7. `internal/<name>test/`: `scenario_test.go` (with `collectFlow` in `given`), `harness_test.go` (`flowGate` after `budget.Main`), `binding_test.go`, `contexts_test.go`, `conventions_test.go`, `flow_test.go`; the Makefile's `contexts`, `flow` and `flow-check` targets, the last two in `ci`; `make flow` once, and commit `docs/flow.md` and `flow.json`.
 8. `make dev` and `observe` targets, the dashboard in `ops/observability/dashboards/`.
 
