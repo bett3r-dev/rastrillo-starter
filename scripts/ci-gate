@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# ci-gate runs the targets of a Makefile's ci line, one by one, and
+# certifies only what ran (pv4's seams ADR, rule 5; "a SKIP is not a
+# pass"). Every Makefile's ci is this script over its CI list:
+#
+#   ci:
+#   	../../scripts/ci-gate $(CI)
+#
+# Each target either runs or says why not:
+#
+#   - a target that cannot run its check prints one line,
+#       SKIP <target> reason=<why>
+#     and exits 0. That is a SKIP here, never a pass.
+#   - a target whose recipe runs nothing (make -n prints nothing, or
+#     "Nothing to be done") and printed no SKIP line fails: removing a
+#     target's run is not a way to make the gate green.
+#   - a target that exits non-zero fails, and the gate stops there.
+#
+# The gate ends with a summary: what ran, every SKIP line it saw (a
+# nested gate's included, under the target that ran it) and the
+# verdict, PASS only when nothing was skipped.
+set -uo pipefail
+
+if [ $# -eq 0 ]; then
+	echo "usage: ci-gate <target>..." >&2
+	exit 2
+fi
+
+ran=()
+skipped=()
+out=$(mktemp)
+trap 'rm -f "$out"' EXIT
+
+summary() {
+	echo
+	echo "== ci summary: ${#ran[@]} ran, ${#skipped[@]} skipped"
+	for s in ${skipped[@]+"${skipped[@]}"}; do
+		echo "CI-SKIPPED $s"
+	done
+}
+
+for t in "$@"; do
+	echo "== $t"
+	dry=$(make -n --no-print-directory "$t" 2>&1) || {
+		echo "$dry"
+		summary
+		echo "CI: FAIL at $t (make -n $t failed: no such target?)"
+		exit 1
+	}
+	if ! make --no-print-directory "$t" 2>&1 | tee "$out"; then
+		summary
+		echo "CI: FAIL at $t"
+		exit 1
+	fi
+	own=$(grep -E "^SKIP $t reason=" "$out" | head -1)
+	# Every SKIP line from a nested gate (an app's, under the root's
+	# apps), kept once, under the target that ran it.
+	while IFS= read -r line; do
+		[ -n "$line" ] && [ "$line" != "$own" ] && skipped+=("${line#SKIP } (in $t)")
+	done < <(grep -E '^SKIP [^ ]+ reason=' "$out")
+	if [ -n "$own" ]; then
+		skipped+=("${own#SKIP }")
+		continue
+	fi
+	if [ -z "$(printf '%s' "$dry" | grep -v 'Nothing to be done')" ]; then
+		summary
+		echo "CI: FAIL at $t: it runs nothing and printed no 'SKIP $t reason=<why>' line"
+		exit 1
+	fi
+	ran+=("$t")
+done
+
+summary
+if [ ${#skipped[@]} -gt 0 ]; then
+	echo "CI: PASS on what ran; ${#skipped[@]} SKIPPED, NOT PASSED (above)"
+else
+	echo "CI: PASS, every target ran"
+fi

@@ -38,7 +38,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null)
 # and a suite running beside it would be measured too.
 .NOTPARALLEL:
 
-.PHONY: build release version-check test vet fmt-check staticcheck govulncheck gitleaks budget perf migration-check contexts escapes flow flow-check oracle ci dev observe observe-run observe-down
+.PHONY: build release version-check test vet fmt-check staticcheck govulncheck gitleaks budget perf migration-check contexts escapes flow flow-check oracle browser ci dev observe observe-run observe-down
 
 RASTRILLO := go run amadan.net/rastrillo/rastrillo/cmd/rastrillo
 
@@ -215,7 +215,7 @@ gitleaks:
 	@if [ "$$(git rev-parse --is-inside-work-tree 2>/dev/null)" = true ] && [ -z "$$(git rev-parse --show-prefix)" ]; then \
 		go run $(GITLEAKS) git --no-banner --redact .; \
 	else \
-		echo "gitleaks: this directory is not the root of a git repository, so there is nothing committed to scan"; \
+		echo "SKIP gitleaks reason=this directory is not the root of a git repository, so there is nothing committed to scan here"; \
 	fi
 
 # A step of its own, not folded into another target's recipe: ci.d/
@@ -267,9 +267,32 @@ flow-check:
 # oracle/oracle_test.go says how. It execs go build, which Go's test
 # cache cannot see, hence -count=1 and the tag that keeps it out of
 # make test. budget test holds it to the same 10s.
+# An app without an oracle/ (it is optional) says so, as a SKIP.
 oracle:
+	@if [ ! -d oracle ]; then echo "SKIP oracle reason=this app has no oracle/"; exit 0; fi; \
+	echo 'CGO_ENABLED=0 $(RASTRILLO) budget test -tags oracle -count=1 ./oracle/'; \
 	CGO_ENABLED=0 $(RASTRILLO) budget test -tags oracle -count=1 ./oracle/
 
+# The browser drive (browser_test.go): the app in a real Chromium.
+# With no Chromium on this machine the harness skips it (the
+# RASTRILLO_BROWSER_OPTIONAL it is run with here), and this target
+# says so as a SKIP, with the harness's own words: the drive did not
+# run, so the gate did not pass it. Install Chromium, or point
+# RASTRILLO_CHROME at one, to make it run.
+browser:
+	@out=$$(CGO_ENABLED=0 RASTRILLO_BROWSER_OPTIONAL=1 go test -tags browser -count=1 -v -run '^TestBrowser' ./internal/myapptest/ 2>&1); st=$$?; \
+	echo "$$out" | grep -E '^(--- |ok|FAIL|PASS)' ; \
+	if [ $$st -ne 0 ]; then echo "$$out"; exit $$st; fi; \
+	if echo "$$out" | grep -q -- '--- SKIP'; then \
+		why=$$(echo "$$out" | grep -B1 -- '--- SKIP' | sed -n 's/^ *[a-z_]*\.go:[0-9]*: //p' | head -1); \
+		echo "SKIP browser reason=$${why:-the browser drive skipped}"; \
+	fi
+
+# ci is the one gate, run by scripts/ci-gate one target at a time: each
+# target runs, or prints "SKIP <target> reason=<why>" and is listed as
+# skipped in the summary the gate ends with; a target that runs nothing
+# and says no SKIP fails it.
+#
 # ci is the one gate: what a runner executes and what you run before
 # pushing are the same definition. amadan's runner falls back to this
 # target when .amadan/ci is absent; ci.d/ carries the same targets,
@@ -277,4 +300,6 @@ oracle:
 # fails the build the moment models.go and migrations/ disagree,
 # instead of at boot on whatever machine notices next. If the app
 # declares manifest resources, also add: rastrillo generate --check
-ci: vet fmt-check staticcheck govulncheck gitleaks budget test perf migration-check contexts escapes flow-check oracle
+CI := vet fmt-check staticcheck govulncheck gitleaks budget test perf migration-check contexts escapes flow-check oracle browser
+ci:
+	@../../scripts/ci-gate $(CI)

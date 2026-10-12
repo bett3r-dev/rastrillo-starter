@@ -26,7 +26,13 @@ endif
 .NOTPARALLEL:
 .PHONY: ci apps shared toolchain-check gitleaks ci-app new-app ledger-install ledger-push
 
-ci: toolchain-check shared apps gitleaks
+# scripts/ci-gate runs each target of CI and certifies only what ran:
+# a target that cannot run prints "SKIP <target> reason=<why>", the
+# gate ends with every SKIP it saw (each app's included), and a target
+# that runs nothing without a SKIP line fails it.
+CI := toolchain-check shared apps gitleaks
+ci:
+	@./scripts/ci-gate $(CI)
 
 apps:
 	@set -e; for a in $(APPS); do echo "== apps/$$a"; $(MAKE) -C apps/$$a ci; done
