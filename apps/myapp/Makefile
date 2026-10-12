@@ -38,7 +38,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null)
 # and a suite running beside it would be measured too.
 .NOTPARALLEL:
 
-.PHONY: build release version-check test vet fmt-check staticcheck govulncheck gitleaks budget perf migration-check contexts flow flow-check oracle ci dev observe observe-run observe-down
+.PHONY: build release version-check test vet fmt-check staticcheck govulncheck gitleaks budget perf migration-check contexts escapes flow flow-check oracle ci dev observe observe-run observe-down
 
 RASTRILLO := go run amadan.net/rastrillo/rastrillo/cmd/rastrillo
 
@@ -239,6 +239,13 @@ migration-check:
 contexts:
 	CGO_ENABLED=0 go test -count=1 -run 'TestNoJoinsAcrossContexts|TestNoFeatureImportsAnother' ./internal/myapptest/
 
+# escapes is the escape-hatch census (escapes_test.go): every SkipHooks,
+# raw SQL on a tracked table, sql.Open outside cmd/ and exempt column
+# in the app and libs/ named with a reason. It parses source Go cannot
+# see as test inputs, hence -count=1.
+escapes:
+	CGO_ENABLED=0 go test -count=1 -run 'TestEveryEscapeHatchIsNamed|TestTheEscapeCensusSeesPlantedHatches' ./internal/myapptest/
+
 # The flow chain (Command -> [context] Event ==> [context] Event), read
 # off the change records every scenario lands (ADR 0003). It needs all
 # of them, so it runs only when asked, after the whole package: flow
@@ -270,4 +277,4 @@ oracle:
 # fails the build the moment models.go and migrations/ disagree,
 # instead of at boot on whatever machine notices next. If the app
 # declares manifest resources, also add: rastrillo generate --check
-ci: vet fmt-check staticcheck govulncheck gitleaks budget test perf migration-check contexts flow-check oracle
+ci: vet fmt-check staticcheck govulncheck gitleaks budget test perf migration-check contexts escapes flow-check oracle
