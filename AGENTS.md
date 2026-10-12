@@ -56,12 +56,21 @@ docs/decisions/  ADRs
 
 `make ci` at the root: every app's own `make ci` (vet, gofmt,
 staticcheck, govulncheck, budgets, tests, the perf lane, the migration
-check, `make contexts`, `make flow-check`, and `make oracle` where the
-app has one), then `libs` and `tools`, then gitleaks once.
+check, `make contexts`, `make escapes`, `make flow-check`, `make
+oracle` where the app has one, and the browser drive), then `libs`
+and `tools`, then gitleaks once.
 `make -C apps/<app> ci` is one app's gate. While editing:
 `go test -short ./internal/<app>/... ./internal/<app>test/` from the
 app's directory. `CGO_ENABLED=0` throughout. Every Makefile pins the
 same `GOTOOLCHAIN`; `make toolchain-check` holds them equal.
+
+**The gate certifies only what ran** (`scripts/ci-gate`, which every
+Makefile's `ci` runs over its `CI` list). A target that cannot run its
+check prints one line, `SKIP <target> reason=<why>`, and exits 0; a
+target whose recipe runs nothing and says no SKIP fails the gate. The
+gate ends with a summary naming every SKIP it saw, each app's
+included, and says PASS only when nothing was skipped. A SKIP is not
+a pass: report it as one. `tools/cigate` tests the script.
 
 **The oracle** (`apps/<app>/oracle/`, build tag `oracle`, optional):
 the scenarios again as black-box HTTP tests, one fresh process per
@@ -235,6 +244,12 @@ rot.
   carries it. Migrations run before the guard exists and another
   process's connection never sees it; `<app> verify -db <copy>` is the
   check after the fact.
+- Every way around the hook (`SkipHooks`, raw SQL naming a tracked
+  table, `sql.Open` outside `cmd/`, a `TrackedExempt` column) is named
+  with a reason in `escapes_test.go` (`make escapes`), and a new or
+  stale one fails it. A table neither tracked, untracked with a reason
+  nor plumbing stops `changes.Install` at boot, named
+  (`ErrUndeclaredTable`).
 - Reason names are facts in the customer's words, past tense
   (`NoteWritten`, `MemberJoined`). Never what the code did.
 - Name every invariant, then give it a scenario.
@@ -278,9 +293,9 @@ with the app's gate green:
 2. `models.go`: `Tracked`, `Untracked` (each with its reason), `TrackedExempt`.
 3. `reasons.go` (with `ReasonWrites`) plus one `reasons_<context>.go` (its reasons, tables and `<context>Writes`) and `CONTEXT-<context>.md` per context.
 4. `handlers.go`: `trail(r, entryPoint)`, and an entry point named on every Trail the app opens.
-5. `app.go`: `changes.Install` (with `Allow: ReasonWrites`), `telemetry.DB`, `telemetry.HTTP` first, the `correlation` middleware.
+5. `app.go`: `changes.Install` (with `Untracked: Untracked`, the boot census, and `Allow: ReasonWrites`), `telemetry.DB`, `telemetry.HTTP` first, the `correlation` middleware.
 6. `cmd/<name>/main.go`: `telemetry.Setup`, the `Tee(Correlate(stderr), tel.Logs)` logger, `Shutdown` after `Serve`, the `verify` subcommand, and `exitWhenIdle` behind `<NAME>_IDLE_TIMEOUT` (`libs/activation`, off unset) with its test in `cmd/<name>/main_test.go`.
-7. `internal/<name>test/`: `scenario_test.go` (with `collectFlow` in `given`), `harness_test.go` (`flowGate` after `budget.Main`), `binding_test.go`, `contexts_test.go`, `conventions_test.go`, `flow_test.go`, `writes_test.go`, `coverage_test.go` and `writesites_test.go` (`routeGate` then `writeGate` after `flowGate`, `recordWrites` in `newApp`, the harness logger wrapped in `telemetry.Correlate`); the Makefile's `contexts`, `flow` and `flow-check` targets, the last two in `ci`; `make flow` once, and commit `docs/flow.md` and `flow.json`.
+7. `internal/<name>test/`: `scenario_test.go` (with `collectFlow` in `given`), `harness_test.go` (`flowGate` after `budget.Main`), `binding_test.go`, `contexts_test.go`, `conventions_test.go`, `flow_test.go`, `writes_test.go`, `coverage_test.go` and `writesites_test.go` (`routeGate` then `writeGate` after `flowGate`, `recordWrites` in `newApp`, the harness logger wrapped in `telemetry.Correlate`), `escapes_test.go` (the escape-hatch census, its roots repointed); the Makefile's `contexts`, `escapes`, `flow`, `flow-check` and `browser` targets, `ci` as `../../scripts/ci-gate $(CI)` with all but `flow` in `CI`, and every conditional target's SKIP line; `make flow` once, and commit `docs/flow.md` and `flow.json`.
 8. `make dev` and `observe` targets, the dashboard in `ops/observability/dashboards/`.
 
 ## The prompt ledger
