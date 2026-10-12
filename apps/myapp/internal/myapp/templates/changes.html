@@ -6,7 +6,7 @@
 <div rst-list>
 {{range .Data}}
   <div rst-row class="change" id="change-{{.ID}}"><span rst-row-main><span class="row-name">{{.Reason}}</span> <span class="change-id rst-mono">#{{.ID}}</span>
-  <small rst-row-sub>{{.Entity}} #{{.EntityID}} · {{.Op}} · by {{.Actor}} · because {{if .CauseHref}}<a href="{{.CauseHref}}"><code class="rst-mono">{{.Cause}}</code></a>{{else}}<code class="rst-mono">{{.Cause}}</code>{{end}} · <time datetime="{{.When}}">{{.When}}</time></small>
+  <small rst-row-sub>{{.Entity}} #{{.EntityID}} · {{.Op}} · by {{.Actor}}{{if .OnBehalfOf}} as {{.OnBehalfOf}}{{end}}{{if .Scope}} · within <code class="rst-mono">{{.Scope}}</code>{{end}} · because {{if .CauseHref}}<a href="{{.CauseHref}}"><code class="rst-mono">{{.Cause}}</code></a>{{else}}<code class="rst-mono">{{.Cause}}</code>{{end}} · <time datetime="{{.When}}">{{.When}}</time></small>
   <details class="change-diff"><summary>What changed</summary><code class="rst-mono">{{.Diff}}</code><small rst-row-sub>Correlation <code class="rst-mono">{{.CorrelationID}}</code></small></details></span></div>
 {{end}}
 </div>

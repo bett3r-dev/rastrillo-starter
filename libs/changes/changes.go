@@ -15,6 +15,19 @@
 // cause and the correlation of the request it ran in, which the
 // callback reads off the write's own context (Policy.Correlation).
 //
+// A Trail can also say what larger thing its writes belong to, with
+// Within("session:12"): every change it records then carries that
+// scope, deletes and update diffs included, and InScope reads them
+// back in id order after a cursor. That is how something bigger than
+// one row finds all of its own changes without a join across
+// contexts. A Trail never scoped records "".
+//
+// The thing a Trail is within is sometimes the row it is about to
+// create, whose id only the insert knows: WithinCreated("session")
+// scopes the Trail to "session:<id>" of the row its next tracked
+// write creates, that change included, so starting a session lands
+// in the session's own history like every change after it.
+//
 // The changes table is append-only: its migration (Schema, which an
 // app merges into its BootSchema) adds SQLite triggers that abort any
 // UPDATE or DELETE on it, which catches raw SQL as well as GORM. Enforcing the "must be explained" half at the
@@ -29,6 +42,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -74,9 +88,15 @@ type Change struct {
 	// carries it across services. Read from the write's own context by
 	// Policy.Correlation, never handed in.
 	CorrelationID string `gorm:"index;not null"`
-	// Actor is "member:<id>", "human" (signing up, before there is a
-	// member) or "agent:<name>".
+	// Actor is "member:<id>", "platform:<id>" (a platform admin),
+	// "human" (signing up, before there is a member) or "agent:<name>"
+	// ("agent:claude-code:<member>" for an attached session, ADR 0007).
 	Actor string `gorm:"not null"`
+	// OnBehalfOf is as whom Actor made the change, when that is
+	// someone else: "member:12" while platform admin "platform:7" acts
+	// as that member (ADR 0005). "" when Actor acted as itself. Actor
+	// always stays who really did it.
+	OnBehalfOf string `gorm:"index;not null;default:''"`
 	// EntryPoint is the business name of what opened the write: a
 	// person's command (WriteNote) or an outside fact
 	// (BankReportedTransaction, DayPassed). A Trail opened with no name
@@ -86,6 +106,11 @@ type Change struct {
 	// Trail's, the caused ones included, so the flow chain reads
 	// Command -> Event ==> Event off this table alone.
 	EntryPoint string `gorm:"index;not null;default:''"`
+	// Scope is the larger thing this change belongs to, "kind:id"
+	// ("session:12"), set by Trail.Within; "" when unscoped. Every
+	// change a scoped Trail records carries it, whatever the table or
+	// op, so InScope finds a session's own changes by one equality.
+	Scope string `gorm:"index;not null;default:''"`
 	// Entity is the table, EntityID the row.
 	Entity   string `gorm:"index;not null"`
 	EntityID int64  `gorm:"index;not null"`
@@ -110,6 +135,32 @@ var ErrUncorrelated = errors.New("changes: write on a tracked table outside a re
 // Trail, or a Trail that has not said why.
 var ErrUnexplained = errors.New("changes: write on a tracked table with no reason")
 
+// ErrBadScope is the refusal of a scope that is not "kind:id": a kind
+// of lowercase letters, digits, '-' or '_' starting with a letter, a
+// colon, and an id with no whitespace ("session:12"). Within with one
+// makes every write of its Trail refused; InScope refuses it outright.
+var ErrBadScope = errors.New(`changes: scope is not "kind:id"`)
+
+// ErrScopeConflict is the refusal of Within on a Trail already scoped
+// to something else: a change belongs to one larger thing, and moving
+// a Trail's writes from one to another midway would split them.
+var ErrScopeConflict = errors.New("changes: Trail is already within another scope")
+
+// ErrScopePending is the refusal of a tracked write, through a Trail
+// waiting on WithinCreated, that is not the one-row create naming its
+// scope: the scope's own row must come first, so nothing the Trail
+// writes is left outside it.
+var ErrScopePending = errors.New("changes: Trail is within the row it creates next, and this write is not that one-row create")
+
+// ErrNotAdmitted is the refusal of a tracked write that its Trail's
+// scope does not take (Policy.Admit said no): a frozen session's, say.
+// It wraps Admit's own error, so errors.Is finds either.
+var ErrNotAdmitted = errors.New("changes: the scope does not take this write")
+
+var scopeFormat = regexp.MustCompile(`^[a-z][a-z0-9_-]*:\S+$`)
+
+var scopeKind = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
+
 // Trail carries one request's explanation through its writes. Build
 // it with Begin, put it in the context with Context, state each
 // reason with Because before the writes it explains.
@@ -125,6 +176,16 @@ type Trail struct {
 	// where the Trail is opened. Written on every change it records;
 	// left "", the hook writes the request's route (see entryPoint).
 	EntryPoint string
+	// OnBehalfOf is as whom Actor writes ("member:12"), set where the
+	// Trail is opened when a platform admin acts as a member. Written
+	// on every change it records; "" when Actor acts as itself.
+	OnBehalfOf string
+
+	scope    string // set by Within; "" means unscoped
+	scopeErr error  // a refused Within: every write is refused with it
+	// pending is WithinCreated's kind until the create it waits on
+	// lands and sets scope; "" when nothing is pending.
+	pending string
 
 	reason string
 	cause  string // as given to Because; "" means the request itself
@@ -133,6 +194,9 @@ type Trail struct {
 	stmtCause   string
 	requestID   string // the chain's root
 	recorded    []Change
+	// onRecord is OnRecord's: told each change as it is recorded, on
+	// the write's own connection.
+	onRecord []func(db *gorm.DB, c Change) error
 }
 
 type ctxKey struct{}
@@ -160,6 +224,90 @@ func (t *Trail) Because(reason, cause string) *Trail {
 	t.reason = reason
 	t.cause = cause
 	return t
+}
+
+// Within scopes every write that follows to the larger thing they
+// belong to, "kind:id" ("session:12"), and returns t, so it chains
+// like Because. Scoping is for the Trail's whole life: Within again
+// with the same scope does nothing, and with another one, or with a
+// malformed one, is not undone by anything later; every tracked write
+// through t is then refused (ErrScopeConflict, ErrBadScope) before it
+// reaches SQLite, so no write of a misscoped Trail lands at all. The
+// refusal waits for the write, as ErrBadCause does, so a handler can
+// chain Within where the Trail opens.
+func (t *Trail) Within(scope string) *Trail {
+	switch {
+	case t.scopeErr != nil:
+	case !scopeFormat.MatchString(scope):
+		t.scopeErr = fmt.Errorf("%w: %q", ErrBadScope, scope)
+	case t.pending != "":
+		t.scopeErr = fmt.Errorf("%w: within the %s created next, not %s", ErrScopeConflict, t.pending, scope)
+	case t.scope != "" && t.scope != scope:
+		t.scopeErr = fmt.Errorf("%w: %s, not %s", ErrScopeConflict, t.scope, scope)
+	default:
+		t.scope = scope
+	}
+	return t
+}
+
+// WithinCreated is Within for a thing that does not exist yet: the
+// Trail's next tracked write must create exactly one row, and that
+// row's id names the scope, "kind:<id>" (WithinCreated("session"),
+// then the insert of session 7, is "session:7"). The create's own
+// change carries the scope, and so does every change after it, as
+// with Within. Any other tracked write first (an update, a delete, a
+// create of several rows) is refused before it reaches SQLite
+// (ErrScopePending), and the Trail keeps waiting. A malformed kind
+// (ErrBadScope), or a Trail already scoped or already waiting
+// (ErrScopeConflict), refuses every write of the Trail, as a refused
+// Within does.
+//
+// It is how the insert's id becomes the scope with no allocation
+// ahead of the insert and no second write after it. The created row
+// must have an integer primary key the insert assigns; a create that
+// yields none is an error only after the row is written, so make it
+// inside a transaction.
+func (t *Trail) WithinCreated(kind string) *Trail {
+	switch {
+	case t.scopeErr != nil:
+	case !scopeKind.MatchString(kind):
+		t.scopeErr = fmt.Errorf("%w: kind %q", ErrBadScope, kind)
+	case t.pending != "" || t.scope != "":
+		t.scopeErr = fmt.Errorf("%w: %s%s, not a new %s", ErrScopeConflict, t.scope, t.pending, kind)
+	default:
+		t.pending = kind
+	}
+	return t
+}
+
+// OnRecord asks to be told every change this Trail records, as it is
+// recorded: fn runs right after the change row is written, on the
+// same connection and so inside the write's transaction, with db a
+// session of that connection under no hook. An error from fn refuses
+// the write as any hook refusal does, so what fn writes lands with
+// the change or not at all: a ledger beside the record (the agent
+// door's submissions, apps/server) cannot hold an id whose change was
+// rolled back, nor miss one that committed. Several calls add several
+// functions, run in order.
+func (t *Trail) OnRecord(fn func(db *gorm.DB, c Change) error) *Trail {
+	t.onRecord = append(t.onRecord, fn)
+	return t
+}
+
+// Scope is what Within set, "" when the Trail is unscoped.
+func (t *Trail) Scope() string { return t.scope }
+
+// InScope is the scope's changes with id above afterID, in id order:
+// "this session's changes since cursor X". afterID 0 is all of them.
+// An empty or malformed scope is refused (ErrBadScope) rather than
+// read as "every unscoped change".
+func InScope(ctx context.Context, db *gorm.DB, scope string, afterID int64) ([]Change, error) {
+	if !scopeFormat.MatchString(scope) {
+		return nil, fmt.Errorf("%w: %q", ErrBadScope, scope)
+	}
+	var out []Change
+	err := db.WithContext(ctx).Where("scope = ? AND id > ?", scope, afterID).Order("id").Find(&out).Error
+	return out, err
 }
 
 // Recorded is every Change this Trail has landed, in order.
@@ -215,6 +363,24 @@ type Policy struct {
 	// write's context: in the app, the trace id. Required. A tracked
 	// write whose context yields "" is refused (ErrUncorrelated).
 	Correlation func(context.Context) string
+	// Admit, when set, is asked before every tracked write through a
+	// scoped Trail whether that scope takes it: the scope ("session:12"),
+	// the write's reason, and db, a session on the statement's own
+	// connection (a transaction's, inside one), so a check and the
+	// write it guards cannot be split by another writer. An error
+	// refuses the write before it reaches SQLite (ErrNotAdmitted,
+	// wrapping it). A Trail still waiting on WithinCreated is not
+	// asked: the thing it is within does not exist yet. A frozen
+	// session refusing every write but its reopening is the use.
+	Admit func(db *gorm.DB, scope, reason string) error
+	// Committed, when set, is told after each commit that landed
+	// scoped changes which scopes they were in ("session:12"), once
+	// each, sorted; never inside the transaction, never for a rollback
+	// (committed.go). It runs on the writer's goroutine right after the
+	// commit, so it must not block: a doorbell's non-blocking ring is
+	// the use. Unscoped changes are not told. Left nil, the handle's
+	// pool is not wrapped.
+	Committed func(scopes []string)
 }
 
 // Install registers the callbacks on g for the policy's tracked
@@ -243,8 +409,13 @@ func Install(g *gorm.DB, p Policy) error {
 	if err := guard(g, p); err != nil {
 		return err
 	}
+	if p.Committed != nil {
+		if err := installCommitted(g, p.Committed); err != nil {
+			return err
+		}
+	}
 	cb := func(op string) func(*gorm.DB) {
-		return func(db *gorm.DB) { record(db, set, op) }
+		return func(db *gorm.DB) { record(db, set, op, p.Committed) }
 	}
 	req := func(op string) func(*gorm.DB) {
 		return func(db *gorm.DB) { require(db, set, p, op) }
@@ -279,6 +450,20 @@ func require(db *gorm.DB, tracked map[string]bool, p Policy, op string) {
 	if !ok || t.reason == "" {
 		_ = db.AddError(fmt.Errorf("%w: %s %s", ErrUnexplained, op, st.Table))
 		return
+	}
+	if t.scopeErr != nil {
+		_ = db.AddError(fmt.Errorf("%w (%s %s)", t.scopeErr, op, st.Table))
+		return
+	}
+	if t.pending != "" && (op != "create" || rowCount(st.ReflectValue) != 1) {
+		_ = db.AddError(fmt.Errorf("%w: within the %s created next (%s %s)", ErrScopePending, t.pending, op, st.Table))
+		return
+	}
+	if p.Admit != nil && t.scope != "" {
+		if err := p.Admit(db.Session(&gorm.Session{NewDB: true, SkipHooks: true}), t.scope, t.reason); err != nil {
+			_ = db.AddError(fmt.Errorf("%w: %s (%s %s): %w", ErrNotAdmitted, t.scope, op, st.Table, err))
+			return
+		}
 	}
 	corr := p.Correlation(st.Context)
 	if corr == "" {
@@ -320,6 +505,18 @@ func require(db *gorm.DB, tracked map[string]bool, p Policy, op string) {
 	if err := sess.Exec("INSERT INTO changes_intent (entity) VALUES (?)", st.Table).Error; err != nil {
 		_ = db.AddError(err)
 	}
+}
+
+// rowCount is how many rows a statement's value holds: a slice's
+// length, otherwise one.
+func rowCount(rv reflect.Value) int {
+	for rv.Kind() == reflect.Ptr {
+		rv = rv.Elem()
+	}
+	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		return rv.Len()
+	}
+	return 1
 }
 
 // guard installs the intent table and the triggers on the connection
@@ -380,7 +577,7 @@ func columns(g *gorm.DB, table string) ([]string, error) {
 	return out, rows.Err()
 }
 
-func record(db *gorm.DB, tracked map[string]bool, op string) {
+func record(db *gorm.DB, tracked map[string]bool, op string, committed func([]string)) {
 	st := db.Statement
 	if st.Schema == nil || !tracked[st.Table] {
 		return
@@ -420,6 +617,15 @@ func record(db *gorm.DB, tracked map[string]bool, op string) {
 				}
 			}
 		}
+		if t.pending != "" {
+			// require let only a one-row create through: its id is
+			// the scope, for this change and every one after it.
+			if id == 0 {
+				_ = db.AddError(fmt.Errorf("%w: the %s created on %s has no id", ErrBadScope, t.pending, st.Table))
+				return
+			}
+			t.scope, t.pending = fmt.Sprintf("%s:%d", t.pending, id), ""
+		}
 		diff := diffOf(st.Dest, row, op)
 		c := Change{
 			Reason:        t.reason,
@@ -427,6 +633,8 @@ func record(db *gorm.DB, tracked map[string]bool, op string) {
 			RequestID:     root,
 			CorrelationID: t.correlation,
 			Actor:         t.Actor,
+			OnBehalfOf:    t.OnBehalfOf,
+			Scope:         t.scope,
 			EntryPoint:    entryPoint(t, st.Context),
 			Entity:        st.Table,
 			EntityID:      id,
@@ -440,7 +648,14 @@ func record(db *gorm.DB, tracked map[string]bool, op string) {
 			return
 		}
 		t.recorded = append(t.recorded, c)
+		for _, fn := range t.onRecord {
+			if err := fn(db.Session(&gorm.Session{NewDB: true, SkipHooks: true}), c); err != nil {
+				_ = db.AddError(fmt.Errorf("changes: on record %s %s: %w", op, st.Table, err))
+				return
+			}
+		}
 	}
+	landed(db, t.scope, committed)
 }
 
 // entryPoint is the Trail's name for what opened it or, when it has

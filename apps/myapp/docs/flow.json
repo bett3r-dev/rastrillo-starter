@@ -34,6 +34,7 @@
         "context": "notes"
       },
       "scenarios": [
+        "TestScenarioANoteKeepsItsOwnHistory",
         "TestScenarioANoteWithoutATitleIsRefused",
         "TestScenarioCorrectingANote",
         "TestScenarioJoining",
@@ -63,6 +64,7 @@
         }
       ],
       "scenarios": [
+        "TestScenarioANoteKeepsItsOwnHistory",
         "TestScenarioANoteWithoutATitleIsRefused",
         "TestScenarioCorrectingANote",
         "TestScenarioJoining",
@@ -78,6 +80,7 @@
       },
       "then": [],
       "scenarios": [
+        "TestScenarioANoteKeepsItsOwnHistory",
         "TestScenarioCorrectingANote",
         "TestScenarioWritingANote"
       ]

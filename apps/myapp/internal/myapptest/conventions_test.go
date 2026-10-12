@@ -38,6 +38,23 @@ func TestChangesIsStillAppendOnly(t *testing.T) {
 	}
 }
 
+// /changes answers "who really did it, and as whom": a change recorded
+// on behalf of someone else (a platform admin acting as a member)
+// shows both, and one recorded as itself shows no "as".
+func TestTheChangeLogShowsOnBehalfOf(t *testing.T) {
+	t.Parallel()
+	s := given(t)
+	ana := s.aMember("Ana")
+	if err := s.db.G.Exec("INSERT INTO changes (reason, cause, request_id, correlation_id, actor, on_behalf_of, entity, entity_id, op, diff, created_at) " +
+		"VALUES ('NoteWritten', 'request:r', 'request:r', 'r', 'platform:7', 'member:1', 'notes', 1, 'create', '{}', CURRENT_TIMESTAMP)").Error; err != nil {
+		t.Fatal(err)
+	}
+	ana.sees("/changes", "by platform:7 as member:1")
+	if body := ana.get("/changes").Body.String(); strings.Contains(body, "by human as") {
+		t.Fatal("a change made as itself shows an on-behalf-of")
+	}
+}
+
 // request_id is the root of the chain, on every link: a correction
 // made in a later request still names the request that wrote the
 // note, not its own.

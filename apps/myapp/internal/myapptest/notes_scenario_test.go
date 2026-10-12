@@ -1,11 +1,13 @@
 package myapptest
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
 
 	myapp "myapp/internal/myapp"
+	"myproject/libs/changes"
 )
 
 // Given a member, When she writes a note, Then everyone sees it and
@@ -47,6 +49,33 @@ func TestScenarioCorrectingANote(t *testing.T) {
 	}
 	ana.sees("/", "Groceries")
 	ana.sees("/changes", myapp.ReasonNoteCorrected, `href="#change-`+itoa(first[0])+`"`)
+}
+
+// Given a member, When she writes a note and corrects it, Then both
+// changes are within that note ("note:<id>") and the note's history
+// reads back through changes.InScope, the write first. The write's own
+// change carries the scope even though the note's id only exists once
+// it is inserted (Trail.WithinCreated).
+func TestScenarioANoteKeepsItsOwnHistory(t *testing.T) {
+	t.Parallel()
+	s := given(t)
+	ana := s.aMember("Ana")
+	s.mark_()
+
+	redirected(t, ana.writesNote("Groceires", "Milk"), "/")
+	n := s.note("Groceires")
+	redirected(t, ana.correctsNote(n.ID, "Groceries", "Milk"), "/")
+
+	got := s.changed(myapp.ReasonNoteWritten, myapp.ReasonNoteCorrected)
+	scope := "note:" + itoa(n.ID)
+	history, err := changes.InScope(context.Background(), s.db.G, scope, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 2 || history[0].ID != got[0].ID || history[1].ID != got[1].ID {
+		t.Fatalf("InScope(%s) = %v, want the write then the correction", scope, history)
+	}
+	ana.sees("/changes", `within <code class="rst-mono">`+scope+`</code>`)
 }
 
 // A note needs a title; the form says so beside the field and nothing

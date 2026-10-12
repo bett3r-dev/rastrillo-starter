@@ -7,11 +7,14 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
 	"amadan.net/rastrillo/rastrillo/budget"
 	"amadan.net/rastrillo/rastrillo/db"
+	"amadan.net/rastrillo/rastrillo/migrate"
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 
@@ -142,6 +145,72 @@ func TestUnnamedEntryPointRecordsTheRoute(t *testing.T) {
 	g.Order("id").Find(&got)
 	if len(got) != 2 || got[0].EntryPoint != "POST /notes/{id}/archive" || got[1].EntryPoint != "ArchiveNote" {
 		t.Fatalf("changes = %+v", got)
+	}
+}
+
+// A platform admin acting as a member (ADR 0005) is recorded as both:
+// actor stays who did it, on_behalf_of says as whom. A Trail that
+// acts as itself leaves on_behalf_of empty.
+func TestAWriteOnBehalfOfAMemberRecordsBoth(t *testing.T) {
+	t.Parallel()
+	g := open(t)
+	as := changes.Begin("platform:7").Because("ProbeRecorded", "")
+	as.OnBehalfOf = "member:12"
+	if err := g.WithContext(as.Context(inRequest("req-1"))).Create(&probe{Name: "x"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	itself := changes.Begin("member:12").Because("ProbeRecorded", "")
+	if err := g.WithContext(itself.Context(inRequest("req-2"))).Create(&probe{Name: "y"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	var got []changes.Change
+	g.Order("id").Find(&got)
+	if len(got) != 2 {
+		t.Fatalf("changes = %d, want 2", len(got))
+	}
+	if got[0].Actor != "platform:7" || got[0].OnBehalfOf != "member:12" {
+		t.Fatalf("acting as a member: actor %q, on_behalf_of %q", got[0].Actor, got[0].OnBehalfOf)
+	}
+	if got[1].Actor != "member:12" || got[1].OnBehalfOf != "" {
+		t.Fatalf("acting as itself: actor %q, on_behalf_of %q", got[1].Actor, got[1].OnBehalfOf)
+	}
+	if r, _ := as.Last(); r.OnBehalfOf != "member:12" {
+		t.Fatalf("Last() on_behalf_of = %q", r.OnBehalfOf)
+	}
+}
+
+// The migrations, not AutoMigrate, are what every app boots with:
+// they must give changes the on_behalf_of and scope columns (scope
+// indexed), empty for rows recorded before them, and keep the table
+// append-only.
+func TestSchemaAddsItsColumnsAndStaysAppendOnly(t *testing.T) {
+	t.Parallel()
+	d, err := db.Open(filepath.Join(t.TempDir(), "s.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	if _, err := migrate.Apply(context.Background(), d, changes.Schema); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.G.Exec("INSERT INTO changes (reason, cause, request_id, correlation_id, actor, entity, entity_id, op, diff, created_at) " +
+		"VALUES ('ProbeRecorded', 'request:r', 'request:r', 'r', 'human', 'probes', 1, 'create', '{}', CURRENT_TIMESTAMP)").Error; err != nil {
+		t.Fatal(err)
+	}
+	var c changes.Change
+	if err := d.G.First(&c).Error; err != nil {
+		t.Fatal(err)
+	}
+	if c.OnBehalfOf != "" || c.EntryPoint != "" || c.Scope != "" {
+		t.Fatalf("defaults: on_behalf_of %q, entry_point %q, scope %q", c.OnBehalfOf, c.EntryPoint, c.Scope)
+	}
+	var idx int64
+	d.G.Raw("SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_changes_scope'").Scan(&idx)
+	if idx != 1 {
+		t.Fatal("the migrations left changes.scope unindexed")
+	}
+	if err := d.G.Exec("UPDATE changes SET on_behalf_of = 'member:1'").Error; err == nil || !strings.Contains(err.Error(), "append-only") {
+		t.Fatalf("UPDATE on changes: err = %v, want the append-only trigger", err)
 	}
 }
 
@@ -324,5 +393,330 @@ func TestDiffCarriesTheRowByOp(t *testing.T) {
 		if rec[i].Op != w.op || rec[i].Diff != w.diff {
 			t.Errorf("#%d: op %s diff %s, want %s %s", i, rec[i].Op, rec[i].Diff, w.op, w.diff)
 		}
+	}
+}
+
+// A scoped Trail's every change carries the scope, whatever the op:
+// a delete and an update diff, which carry no session column of their
+// own, included. An unscoped Trail's carry "".
+func TestAScopedTrailScopesEveryChange(t *testing.T) {
+	t.Parallel()
+	g := open(t)
+	tr := changes.Begin("member:1").Within("session:12").Because("ProbeRecorded", "")
+	ctx := tr.Context(inRequest("req-s"))
+	p := probe{Name: "x"}
+	if err := g.WithContext(ctx).Create(&p).Error; err != nil {
+		t.Fatal(err)
+	}
+	tr.Because("ProbeRenamed", "")
+	if err := g.WithContext(ctx).Model(&p).Select("Name").Updates(map[string]any{"Name": "y"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	tr.Because("ProbeDropped", "")
+	if err := g.WithContext(ctx).Delete(&p).Error; err != nil {
+		t.Fatal(err)
+	}
+	plain := changes.Begin("member:1").Because("ProbeRecorded", "")
+	if err := g.WithContext(plain.Context(inRequest("req-u"))).Create(&probe{Name: "z"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	var got []changes.Change
+	g.Order("id").Find(&got)
+	if len(got) != 4 {
+		t.Fatalf("changes = %d, want 4", len(got))
+	}
+	for i, op := range []string{"create", "update", "delete"} {
+		if got[i].Op != op || got[i].Scope != "session:12" {
+			t.Errorf("#%d: op %s scope %q, want %s in session:12", i, got[i].Op, got[i].Scope, op)
+		}
+	}
+	if got[3].Scope != "" || plain.Scope() != "" {
+		t.Errorf("unscoped Trail: change scope %q, Trail scope %q", got[3].Scope, plain.Scope())
+	}
+	if tr.Scope() != "session:12" {
+		t.Errorf("Scope() = %q", tr.Scope())
+	}
+}
+
+// A scope is "kind:id". Anything else, and a second Within that names
+// another scope, refuses every write of the Trail before it lands,
+// with a named error; a later Within cannot undo it. Within again with
+// the same scope is harmless.
+func TestAMalformedOrConflictingScopeIsRefused(t *testing.T) {
+	t.Parallel()
+	g := open(t)
+	cases := []struct {
+		name   string
+		within []string
+		want   error
+	}{
+		{"empty", []string{""}, changes.ErrBadScope},
+		{"no id", []string{"session:"}, changes.ErrBadScope},
+		{"no kind", []string{":12"}, changes.ErrBadScope},
+		{"no colon", []string{"session12"}, changes.ErrBadScope},
+		{"upper kind", []string{"Session:12"}, changes.ErrBadScope},
+		{"whitespace", []string{"session:1 2"}, changes.ErrBadScope},
+		{"another scope", []string{"session:12", "session:13"}, changes.ErrScopeConflict},
+		{"not undone", []string{"session:12", "session:13", "session:12"}, changes.ErrScopeConflict},
+	}
+	for _, c := range cases {
+		tr := changes.Begin("member:1")
+		for _, s := range c.within {
+			tr.Within(s)
+		}
+		tr.Because("ProbeRecorded", "")
+		err := g.WithContext(tr.Context(inRequest("req-bad"))).Create(&probe{Name: c.name}).Error
+		if !errors.Is(err, c.want) {
+			t.Errorf("%s: err = %v, want %v", c.name, err, c.want)
+		}
+	}
+	var n int64
+	g.Model(&probe{}).Count(&n)
+	if n != 0 {
+		t.Fatalf("a refused row landed: %d probes", n)
+	}
+
+	same := changes.Begin("member:1").Within("session:12").Within("session:12").Because("ProbeRecorded", "")
+	if err := g.WithContext(same.Context(inRequest("req-same"))).Create(&probe{Name: "ok"}).Error; err != nil {
+		t.Fatalf("the same scope twice: %v", err)
+	}
+	if r, _ := same.Last(); r.Scope != "session:12" {
+		t.Fatalf("scope = %q", r.Scope)
+	}
+}
+
+// InScope is "this session's changes since cursor X": only that
+// scope's, in id order, strictly after the cursor, across requests.
+// An empty scope is refused, not read as every unscoped change.
+func TestInScopeReadsAScopesChangesAfterACursor(t *testing.T) {
+	t.Parallel()
+	g := open(t)
+	write := func(scope, req string) changes.Change {
+		t.Helper()
+		tr := changes.Begin("member:1")
+		if scope != "" {
+			tr.Within(scope)
+		}
+		tr.Because("ProbeRecorded", "")
+		if err := g.WithContext(tr.Context(inRequest(req))).Create(&probe{Name: req}).Error; err != nil {
+			t.Fatal(err)
+		}
+		c, _ := tr.Last()
+		return c
+	}
+	a1 := write("session:1", "r1")
+	write("session:2", "r2")
+	write("", "r3")
+	a2 := write("session:1", "r4")
+	a3 := write("session:1", "r5")
+
+	ids := func(cs []changes.Change) []int64 {
+		var out []int64
+		for _, c := range cs {
+			out = append(out, c.ID)
+		}
+		return out
+	}
+	all, err := changes.InScope(context.Background(), g, "session:1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := ids(all), []int64{a1.ID, a2.ID, a3.ID}; !slices.Equal(got, want) {
+		t.Fatalf("InScope(session:1, 0) = %v, want %v", got, want)
+	}
+	since, err := changes.InScope(context.Background(), g, "session:1", a2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := ids(since), []int64{a3.ID}; !slices.Equal(got, want) {
+		t.Fatalf("InScope(session:1, %d) = %v, want %v", a2.ID, got, want)
+	}
+	none, err := changes.InScope(context.Background(), g, "session:1", a3.ID)
+	if err != nil || len(none) != 0 {
+		t.Fatalf("InScope past the last change = %v, %v", ids(none), err)
+	}
+	if _, err := changes.InScope(context.Background(), g, "", 0); !errors.Is(err, changes.ErrBadScope) {
+		t.Fatalf("InScope(\"\") err = %v, want ErrBadScope", err)
+	}
+}
+
+// WithinCreated scopes a Trail to the row it creates next: that
+// create's change carries "kind:<its id>", and so does every change
+// after it. Until that create lands, any other tracked write is
+// refused before it reaches SQLite, and the Trail keeps waiting.
+func TestWithinCreatedScopesToTheRowItCreates(t *testing.T) {
+	t.Parallel()
+	g := open(t)
+	other := probe{Name: "earlier"}
+	seed := changes.Begin("member:1").Because("ProbeRecorded", "")
+	if err := g.WithContext(seed.Context(inRequest("req-0"))).Create(&other).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	tr := changes.Begin("member:1").WithinCreated("session")
+	ctx := tr.Context(inRequest("req-c"))
+	tr.Because("ProbeRenamed", "")
+	if err := g.WithContext(ctx).Model(&other).Select("Name").Updates(map[string]any{"Name": "moved"}).Error; !errors.Is(err, changes.ErrScopePending) {
+		t.Fatalf("update before the create: err = %v, want ErrScopePending", err)
+	}
+	tr.Because("ProbeRecorded", "")
+	if err := g.WithContext(ctx).Create(&[]probe{{Name: "a"}, {Name: "b"}}).Error; !errors.Is(err, changes.ErrScopePending) {
+		t.Fatalf("two-row create: err = %v, want ErrScopePending", err)
+	}
+	if tr.Scope() != "" {
+		t.Fatalf("Scope() before the create = %q", tr.Scope())
+	}
+	p := probe{Name: "new"}
+	if err := g.WithContext(ctx).Create(&p).Error; err != nil {
+		t.Fatal(err)
+	}
+	want := "session:" + strconv.FormatInt(p.ID, 10)
+	tr.Because("ProbeRenamed", "")
+	if err := g.WithContext(ctx).Model(&p).Select("Name").Updates(map[string]any{"Name": "renamed"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	got := tr.Recorded()
+	if len(got) != 2 || got[0].EntityID != p.ID || got[0].Scope != want || got[1].Scope != want || tr.Scope() != want {
+		t.Fatalf("changes %+v, Scope() %q, want both in %s", got, tr.Scope(), want)
+	}
+	var n int64
+	g.Model(&probe{}).Count(&n)
+	if n != 2 {
+		t.Fatalf("probes = %d, want the seed and the scoped one: a refused write landed", n)
+	}
+
+	cases := []struct {
+		name string
+		tr   *changes.Trail
+		want error
+	}{
+		{"bad kind", changes.Begin("member:1").WithinCreated("Session"), changes.ErrBadScope},
+		{"kind with id", changes.Begin("member:1").WithinCreated("session:1"), changes.ErrBadScope},
+		{"already scoped", changes.Begin("member:1").Within("session:1").WithinCreated("session"), changes.ErrScopeConflict},
+		{"twice", changes.Begin("member:1").WithinCreated("session").WithinCreated("session"), changes.ErrScopeConflict},
+		{"Within while waiting", changes.Begin("member:1").WithinCreated("session").Within("session:1"), changes.ErrScopeConflict},
+	}
+	for _, c := range cases {
+		c.tr.Because("ProbeRecorded", "")
+		if err := g.WithContext(c.tr.Context(inRequest("req-x"))).Create(&probe{Name: c.name}).Error; !errors.Is(err, c.want) {
+			t.Errorf("%s: err = %v, want %v", c.name, err, c.want)
+		}
+	}
+}
+
+// A scope may refuse writes (Policy.Admit): a frozen session takes
+// none but its reopening. Admit is asked on the statement's own
+// connection, inside the write's transaction, with the scope and the
+// reason, before the write reaches SQLite; a refusal lands neither the
+// row nor its change and is ErrNotAdmitted wrapping Admit's error. An
+// unscoped Trail, and one waiting on WithinCreated, is never asked.
+func TestAScopeThatDoesNotAdmitAWriteRefusesIt(t *testing.T) {
+	t.Parallel()
+	d, err := db.Open(filepath.Join(t.TempDir(), "c.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	if err := d.G.AutoMigrate(&changes.Change{}, &probe{}); err != nil {
+		t.Fatal(err)
+	}
+	closed := errors.New("probe 1 is closed")
+	var asked []string
+	admit := func(tx *gorm.DB, scope, reason string) error {
+		asked = append(asked, scope+" "+reason)
+		var n int64 // a read on the write's own connection
+		if err := tx.Table("probes").Where("name = ?", "closed").Count(&n).Error; err != nil {
+			return err
+		}
+		if scope == "probe:1" && n > 0 && reason != "ProbeReopened" {
+			return closed
+		}
+		return nil
+	}
+	if err := changes.Install(d.G, changes.Policy{Tracked: []string{"probes"}, Correlation: correlation, Admit: admit}); err != nil {
+		t.Fatal(err)
+	}
+	g := d.G
+	write := func(scope, reason, name string) error {
+		tr := changes.Begin("member:1").Because(reason, "")
+		if scope != "" {
+			tr.Within(scope)
+		}
+		return g.WithContext(tr.Context(inRequest("req-" + name))).Transaction(func(tx *gorm.DB) error {
+			return tx.Create(&probe{Name: name}).Error
+		})
+	}
+	if err := write("probe:1", "ProbeClosed", "closed"); err != nil {
+		t.Fatal(err)
+	}
+	err = write("probe:1", "ProbeRecorded", "refused")
+	if !errors.Is(err, changes.ErrNotAdmitted) || !errors.Is(err, closed) {
+		t.Fatalf("err = %v, want ErrNotAdmitted wrapping Admit's", err)
+	}
+	for _, ok := range [][3]string{{"probe:1", "ProbeReopened", "reopened"}, {"probe:2", "ProbeRecorded", "other"}, {"", "ProbeRecorded", "unscoped"}} {
+		if err := write(ok[0], ok[1], ok[2]); err != nil {
+			t.Fatalf("%v: %v", ok, err)
+		}
+	}
+	created := changes.Begin("member:1").Because("ProbeRecorded", "").WithinCreated("probe")
+	if err := g.WithContext(created.Context(inRequest("req-c"))).Create(&probe{Name: "created"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	g.Model(&probe{}).Order("id").Pluck("name", &names)
+	if strings.Join(names, ",") != "closed,reopened,other,unscoped,created" {
+		t.Fatalf("probes = %v: the refused write landed, or an admitted one did not", names)
+	}
+	var n int64
+	g.Model(&changes.Change{}).Count(&n)
+	if n != 5 {
+		t.Fatalf("changes = %d, want 5", n)
+	}
+	want := "probe:1 ProbeClosed,probe:1 ProbeRecorded,probe:1 ProbeReopened,probe:2 ProbeRecorded"
+	if strings.Join(asked, ",") != want {
+		t.Fatalf("Admit asked %v, want %s", asked, want)
+	}
+}
+
+// A Trail may keep a ledger beside the record (OnRecord): told each
+// change as it lands, on the write's own connection, so what it writes
+// commits with the change or rolls back with it, and its refusal
+// refuses the write.
+func TestOnRecordWritesWithTheChangeOrNotAtAll(t *testing.T) {
+	t.Parallel()
+	g := open(t)
+	if err := g.Exec("CREATE TABLE ledger (change_id INTEGER NOT NULL)").Error; err != nil {
+		t.Fatal(err)
+	}
+	note := func(tx *gorm.DB, c changes.Change) error {
+		return tx.Exec("INSERT INTO ledger (change_id) VALUES (?)", c.ID).Error
+	}
+	write := func(name string, fail error, fns ...func(*gorm.DB, changes.Change) error) error {
+		tr := changes.Begin("member:1").Because("ProbeRecorded", "")
+		for _, fn := range fns {
+			tr.OnRecord(fn)
+		}
+		return g.WithContext(tr.Context(inRequest("req-" + name))).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Create(&[]probe{{Name: name}, {Name: name + "2"}}).Error; err != nil {
+				return err
+			}
+			return fail
+		})
+	}
+	if err := write("kept", nil, note); err != nil {
+		t.Fatal(err)
+	}
+	if err := write("rolled", errors.New("the handler refused"), note); err == nil {
+		t.Fatal("the failing transaction committed")
+	}
+	refused := errors.New("the ledger refuses")
+	if err := write("refused", nil, note, func(*gorm.DB, changes.Change) error { return refused }); !errors.Is(err, refused) {
+		t.Fatalf("err = %v, want the ledger's refusal", err)
+	}
+	var ids, ledger []int64
+	g.Model(&changes.Change{}).Order("id").Pluck("id", &ids)
+	g.Table("ledger").Order("change_id").Pluck("change_id", &ledger)
+	if len(ids) != 2 || !slices.Equal(ids, ledger) {
+		t.Fatalf("changes %v, ledger %v: want the kept batch's two in both", ids, ledger)
 	}
 }

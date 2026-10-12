@@ -25,14 +25,14 @@ None.
 
 A change in one context caused by a change in another, with the scenarios that land it.
 
-- `MemberJoined[accounts] ⟹ WelcomeNoteWritten[notes]`: TestScenarioANoteWithoutATitleIsRefused, TestScenarioCorrectingANote, TestScenarioJoining, TestScenarioWritingANote
+- `MemberJoined[accounts] ⟹ WelcomeNoteWritten[notes]`: TestScenarioANoteKeepsItsOwnHistory, TestScenarioANoteWithoutATitleIsRefused, TestScenarioCorrectingANote, TestScenarioJoining, TestScenarioWritingANote
 
 ## Chains
 
 Each entry point's direct facts, followed through the cross-context policies they set off, with the scenarios that land the whole line. Same-context follow-ups are left out.
 
-- `Join → [accounts] MemberJoined ⟹ [notes] WelcomeNoteWritten`: TestScenarioANoteWithoutATitleIsRefused, TestScenarioCorrectingANote, TestScenarioJoining, TestScenarioWritingANote
-- `WriteNote → [notes] NoteWritten`: TestScenarioCorrectingANote, TestScenarioWritingANote
+- `Join → [accounts] MemberJoined ⟹ [notes] WelcomeNoteWritten`: TestScenarioANoteKeepsItsOwnHistory, TestScenarioANoteWithoutATitleIsRefused, TestScenarioCorrectingANote, TestScenarioJoining, TestScenarioWritingANote
+- `WriteNote → [notes] NoteWritten`: TestScenarioANoteKeepsItsOwnHistory, TestScenarioCorrectingANote, TestScenarioWritingANote
 
 ## Empty entry points
 

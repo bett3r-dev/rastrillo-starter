@@ -193,8 +193,11 @@ func (a *app) noteCreate(w http.ResponseWriter, r *http.Request) {
 		a.render(w, r, "note_new", "Write a note", noteForm{Values: p.Echo(), Errors: p.Errors()})
 		return
 	}
+	// Every change on a note is within it ("note:<id>"), so its history
+	// is changes.InScope. The id is the insert's, so the Trail waits on
+	// the create (WithinCreated) and the write's own change carries it.
 	t, ctx := a.trail(r, "WriteNote")
-	t.Because(ReasonNoteWritten, "")
+	t.WithinCreated("note").Because(ReasonNoteWritten, "")
 	n := Note{AuthorID: me.ID, Title: p.String("title"), Body: p.String("body")}
 	if err := a.db.G.WithContext(ctx).Create(&n).Error; err != nil {
 		a.fail(w, r, "write note", err)
@@ -262,7 +265,7 @@ func (a *app) noteCorrect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, ctx := a.trail(r, "CorrectNote")
-	t.Because(ReasonNoteCorrected, last.Ref())
+	t.Within("note:"+strconv.FormatInt(n.ID, 10)).Because(ReasonNoteCorrected, last.Ref())
 	if err := a.db.G.WithContext(ctx).Model(&n).Select("Title", "Body").
 		Updates(map[string]any{"Title": p.String("title"), "Body": p.String("body")}).Error; err != nil {
 		a.fail(w, r, "correct note", err)
