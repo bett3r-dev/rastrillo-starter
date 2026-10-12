@@ -44,6 +44,9 @@ func TestMain(m *testing.M) {
 	if code == 0 {
 		code = routeGate() // every mounted route reached by a scenario (coverage_test.go)
 	}
+	if code == 0 {
+		code = writeGate() // every write in the source run by a scenario (writesites_test.go)
+	}
 	schema.Remove()
 	os.Exit(code)
 }
@@ -66,6 +69,7 @@ func newApp(t *testing.T) (http.Handler, *db.DB) {
 		t.Fatalf("db.Open: %v", err)
 	}
 	t.Cleanup(func() { d.Close() })
+	recordWrites(t, d.G)
 	r, err := myapp.Router(d, testOrigin, logger)
 	if err != nil {
 		t.Fatalf("Router: %v", err)

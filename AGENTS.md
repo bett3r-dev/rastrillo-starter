@@ -191,6 +191,16 @@ route is a write path no convention has looked at. A stale exception
 The forms and the way in and out are scenarios that land nothing
 (`screens_scenario_test.go`).
 
+**The write-site gate** (`writesites_test.go`): every GORM write call
+in the app's source (`Create`, `Save`, `Update(s)`, `UpdateColumn(s)`,
+`Delete`, `Exec`, ...) is run by a `TestScenario*`, or is named in
+`notScenarioWrites` (`file.go:line`) with a reason. The route gate
+proves every route runs; this proves every write inside one does, so a
+write whose columns no test has held to its reason's allow-list fails
+here, by file and line, instead of as a 500 in production. A write
+never lands unexplained; this makes sure nobody meets the refusal
+first. Stale exceptions fail too.
+
 4. **Bounded contexts, kept small.** One table, one vocabulary;
    identity shared by id only. A context is a reasons file
    (`reasons_<context>.go`, which declares the tables it owns), a
@@ -270,7 +280,7 @@ with the app's gate green:
 4. `handlers.go`: `trail(r, entryPoint)`, and an entry point named on every Trail the app opens.
 5. `app.go`: `changes.Install` (with `Allow: ReasonWrites`), `telemetry.DB`, `telemetry.HTTP` first, the `correlation` middleware.
 6. `cmd/<name>/main.go`: `telemetry.Setup`, the `Tee(Correlate(stderr), tel.Logs)` logger, `Shutdown` after `Serve`, the `verify` subcommand, and `exitWhenIdle` behind `<NAME>_IDLE_TIMEOUT` (`libs/activation`, off unset) with its test in `cmd/<name>/main_test.go`.
-7. `internal/<name>test/`: `scenario_test.go` (with `collectFlow` in `given`), `harness_test.go` (`flowGate` after `budget.Main`), `binding_test.go`, `contexts_test.go`, `conventions_test.go`, `flow_test.go`, `writes_test.go`, `coverage_test.go` (`routeGate` after `flowGate`, the harness logger wrapped in `telemetry.Correlate`); the Makefile's `contexts`, `flow` and `flow-check` targets, the last two in `ci`; `make flow` once, and commit `docs/flow.md` and `flow.json`.
+7. `internal/<name>test/`: `scenario_test.go` (with `collectFlow` in `given`), `harness_test.go` (`flowGate` after `budget.Main`), `binding_test.go`, `contexts_test.go`, `conventions_test.go`, `flow_test.go`, `writes_test.go`, `coverage_test.go` and `writesites_test.go` (`routeGate` then `writeGate` after `flowGate`, `recordWrites` in `newApp`, the harness logger wrapped in `telemetry.Correlate`); the Makefile's `contexts`, `flow` and `flow-check` targets, the last two in `ci`; `make flow` once, and commit `docs/flow.md` and `flow.json`.
 8. `make dev` and `observe` targets, the dashboard in `ops/observability/dashboards/`.
 
 ## The prompt ledger
