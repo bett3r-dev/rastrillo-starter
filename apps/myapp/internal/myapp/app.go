@@ -121,6 +121,7 @@ func Router(d *db.DB, origin string, logger *slog.Logger) (chi.Router, error) {
 			r.Get("/notes/{id}/correct", a.noteCorrectNew)
 			r.Post("/notes/{id}/correct", a.noteCorrect)
 			r.Get("/changes", a.changeLog)
+			r.Get("/changes.json", a.changeFeed)
 		})
 	})
 

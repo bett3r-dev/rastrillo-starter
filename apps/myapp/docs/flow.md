@@ -26,15 +26,15 @@ None.
 
 A change in one context caused by a change in another, with the scenarios that land it.
 
-- `MemberJoined[accounts] ⟹ WelcomeNoteWritten[notes]`: TestScenarioANoteKeepsItsOwnHistory, TestScenarioANoteWithoutATitleIsRefused, TestScenarioAReconnectCatchesUp, TestScenarioARolledBackWriteRingsNothing, TestScenarioCorrectingANote, TestScenarioJoining, TestScenarioTheNotesPageSaysWhatRefreshesIt, TestScenarioWritingANote, TestScenarioWritingANoteRingsEveryNotesPage
+- `MemberJoined[accounts] ⟹ WelcomeNoteWritten[notes]`: TestScenarioAMemberSignsOutAndBackIn, TestScenarioANoteKeepsItsOwnHistory, TestScenarioANoteWithoutATitleIsRefused, TestScenarioAReconnectCatchesUp, TestScenarioARolledBackWriteRingsNothing, TestScenarioCorrectingANote, TestScenarioEveryFormIsAScreenThatLandsNothing, TestScenarioJoining, TestScenarioTheChangeLogIsReadableByAMachine, TestScenarioTheNotesPageSaysWhatRefreshesIt, TestScenarioWritingANote, TestScenarioWritingANoteRingsEveryNotesPage
 
 ## Chains
 
 Each entry point's direct facts, followed through the cross-context policies they set off, with the scenarios that land the whole line. Same-context follow-ups are left out.
 
-- `CorrectNote → [notes] NoteCorrected`: TestScenarioANoteKeepsItsOwnHistory, TestScenarioCorrectingANote
-- `Join → [accounts] MemberJoined ⟹ [notes] WelcomeNoteWritten`: TestScenarioANoteKeepsItsOwnHistory, TestScenarioANoteWithoutATitleIsRefused, TestScenarioAReconnectCatchesUp, TestScenarioARolledBackWriteRingsNothing, TestScenarioCorrectingANote, TestScenarioJoining, TestScenarioTheNotesPageSaysWhatRefreshesIt, TestScenarioWritingANote, TestScenarioWritingANoteRingsEveryNotesPage
-- `WriteNote → [notes] NoteWritten`: TestScenarioANoteKeepsItsOwnHistory, TestScenarioAReconnectCatchesUp, TestScenarioARolledBackWriteRingsNothing, TestScenarioCorrectingANote, TestScenarioTheNotesPageSaysWhatRefreshesIt, TestScenarioWritingANote, TestScenarioWritingANoteRingsEveryNotesPage
+- `CorrectNote → [notes] NoteCorrected`: TestScenarioANoteKeepsItsOwnHistory, TestScenarioCorrectingANote, TestScenarioTheChangeLogIsReadableByAMachine
+- `Join → [accounts] MemberJoined ⟹ [notes] WelcomeNoteWritten`: TestScenarioAMemberSignsOutAndBackIn, TestScenarioANoteKeepsItsOwnHistory, TestScenarioANoteWithoutATitleIsRefused, TestScenarioAReconnectCatchesUp, TestScenarioARolledBackWriteRingsNothing, TestScenarioCorrectingANote, TestScenarioEveryFormIsAScreenThatLandsNothing, TestScenarioJoining, TestScenarioTheChangeLogIsReadableByAMachine, TestScenarioTheNotesPageSaysWhatRefreshesIt, TestScenarioWritingANote, TestScenarioWritingANoteRingsEveryNotesPage
+- `WriteNote → [notes] NoteWritten`: TestScenarioANoteKeepsItsOwnHistory, TestScenarioAReconnectCatchesUp, TestScenarioARolledBackWriteRingsNothing, TestScenarioCorrectingANote, TestScenarioEveryFormIsAScreenThatLandsNothing, TestScenarioTheChangeLogIsReadableByAMachine, TestScenarioTheNotesPageSaysWhatRefreshesIt, TestScenarioWritingANote, TestScenarioWritingANoteRingsEveryNotesPage
 
 ## Empty entry points
 

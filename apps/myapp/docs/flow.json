@@ -44,12 +44,15 @@
         "context": "notes"
       },
       "scenarios": [
+        "TestScenarioAMemberSignsOutAndBackIn",
         "TestScenarioANoteKeepsItsOwnHistory",
         "TestScenarioANoteWithoutATitleIsRefused",
         "TestScenarioAReconnectCatchesUp",
         "TestScenarioARolledBackWriteRingsNothing",
         "TestScenarioCorrectingANote",
+        "TestScenarioEveryFormIsAScreenThatLandsNothing",
         "TestScenarioJoining",
+        "TestScenarioTheChangeLogIsReadableByAMachine",
         "TestScenarioTheNotesPageSaysWhatRefreshesIt",
         "TestScenarioWritingANote",
         "TestScenarioWritingANoteRingsEveryNotesPage"
@@ -67,7 +70,8 @@
       "then": [],
       "scenarios": [
         "TestScenarioANoteKeepsItsOwnHistory",
-        "TestScenarioCorrectingANote"
+        "TestScenarioCorrectingANote",
+        "TestScenarioTheChangeLogIsReadableByAMachine"
       ]
     },
     {
@@ -91,12 +95,15 @@
         }
       ],
       "scenarios": [
+        "TestScenarioAMemberSignsOutAndBackIn",
         "TestScenarioANoteKeepsItsOwnHistory",
         "TestScenarioANoteWithoutATitleIsRefused",
         "TestScenarioAReconnectCatchesUp",
         "TestScenarioARolledBackWriteRingsNothing",
         "TestScenarioCorrectingANote",
+        "TestScenarioEveryFormIsAScreenThatLandsNothing",
         "TestScenarioJoining",
+        "TestScenarioTheChangeLogIsReadableByAMachine",
         "TestScenarioTheNotesPageSaysWhatRefreshesIt",
         "TestScenarioWritingANote",
         "TestScenarioWritingANoteRingsEveryNotesPage"
@@ -115,6 +122,8 @@
         "TestScenarioAReconnectCatchesUp",
         "TestScenarioARolledBackWriteRingsNothing",
         "TestScenarioCorrectingANote",
+        "TestScenarioEveryFormIsAScreenThatLandsNothing",
+        "TestScenarioTheChangeLogIsReadableByAMachine",
         "TestScenarioTheNotesPageSaysWhatRefreshesIt",
         "TestScenarioWritingANote",
         "TestScenarioWritingANoteRingsEveryNotesPage"

@@ -171,6 +171,15 @@ appears in a scenario's Then, and a Then cannot name an undeclared
 one. Adding a reason means adding a scenario. Deleting a scenario's
 last use of a reason means deleting the reason.
 
+**The route gate** (`coverage_test.go`): every route the router
+mounts is reached by a `TestScenario*`, or is named in
+`notScenarioRoutes` with a reason a reviewer can check. The hook, the
+guard and `noBleed` fire only on a path that runs, so an unreached
+route is a write path no convention has looked at. A stale exception
+(a route no longer mounted, or one a scenario now reaches) fails too.
+The forms and the way in and out are scenarios that land nothing
+(`screens_scenario_test.go`).
+
 4. **Bounded contexts, kept small.** One table, one vocabulary;
    identity shared by id only. A context is a reasons file
    (`reasons_<context>.go`, which declares the tables it owns), a
@@ -209,7 +218,11 @@ rot.
   (`NoteWritten`, `MemberJoined`). Never what the code did.
 - Name every invariant, then give it a scenario.
 - `/changes` is the audit trail as a screen. Keep it able to answer
-  "why did this change?" without database access. A cause that names a
+  "why did this change?" without database access. `/changes.json?after=<id>`
+  is the same rows for a machine, oldest first, 500 a page, behind
+  the same sign-in; its field names (`id, reason, cause, request_id,
+  correlation_id, actor, on_behalf_of, entry_point, scope, table,
+  row_id, op, diff, created_at`) are a contract. A cause that names a
   change links to it, so a correction sits one click from what it
   corrects.
 - A mistake is corrected by a new change, never by rewriting: a reason
@@ -246,7 +259,7 @@ with the app's gate green:
 4. `handlers.go`: `trail(r, entryPoint)`, and an entry point named on every Trail the app opens.
 5. `app.go`: `changes.Install` (with `Allow: ReasonWrites`), `telemetry.DB`, `telemetry.HTTP` first, the `correlation` middleware.
 6. `cmd/<name>/main.go`: `telemetry.Setup`, the `Tee(Correlate(stderr), tel.Logs)` logger, `Shutdown` after `Serve`, the `verify` subcommand, and `exitWhenIdle` behind `<NAME>_IDLE_TIMEOUT` (`libs/activation`, off unset) with its test in `cmd/<name>/main_test.go`.
-7. `internal/<name>test/`: `scenario_test.go` (with `collectFlow` in `given`), `harness_test.go` (`flowGate` after `budget.Main`), `binding_test.go`, `contexts_test.go`, `conventions_test.go`, `flow_test.go`, `writes_test.go`; the Makefile's `contexts`, `flow` and `flow-check` targets, the last two in `ci`; `make flow` once, and commit `docs/flow.md` and `flow.json`.
+7. `internal/<name>test/`: `scenario_test.go` (with `collectFlow` in `given`), `harness_test.go` (`flowGate` after `budget.Main`), `binding_test.go`, `contexts_test.go`, `conventions_test.go`, `flow_test.go`, `writes_test.go`, `coverage_test.go` (`routeGate` after `flowGate`, the harness logger wrapped in `telemetry.Correlate`); the Makefile's `contexts`, `flow` and `flow-check` targets, the last two in `ci`; `make flow` once, and commit `docs/flow.md` and `flow.json`.
 8. `make dev` and `observe` targets, the dashboard in `ops/observability/dashboards/`.
 
 ## The prompt ledger
