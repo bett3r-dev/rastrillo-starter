@@ -774,3 +774,43 @@ func TestAWriteItsReasonDoesNotDeclareIsRefused(t *testing.T) {
 		t.Fatalf("a refused write landed: %d probes, %d changes; want 1 and 2", n, m)
 	}
 }
+
+// tagged is a model whose JSON is an API: its diff's keys are the JSON
+// tags, not the Go names, and the allow-list still reads them as the
+// columns they are.
+type tagged struct {
+	ID         int64  `json:"id"`
+	ElementKey string `json:"esId"`
+	Verdict    string `json:"verdict,omitempty"`
+}
+
+func TestTheAllowListReadsAJSONTaggedDiffAsItsColumns(t *testing.T) {
+	t.Parallel()
+	d, err := db.Open(filepath.Join(t.TempDir(), "c.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	g := d.G
+	if err := g.AutoMigrate(&changes.Change{}, &tagged{}); err != nil {
+		t.Fatal(err)
+	}
+	allow := map[string]changes.Writes{
+		"FlagRaised":  {"taggeds": {"id", "element_key", "verdict"}},
+		"FlagRenamed": {"taggeds": {"verdict"}},
+	}
+	if err := changes.Install(g, changes.Policy{Tracked: []string{"taggeds"}, Correlation: correlation, Allow: allow}); err != nil {
+		t.Fatal(err)
+	}
+	write := func(reason string, f func(*gorm.DB) error) error {
+		return f(g.WithContext(changes.Begin("human").Because(reason, "").Context(inRequest("req-1"))))
+	}
+	row := tagged{ElementKey: "es-1", Verdict: "open"}
+	if err := write("FlagRaised", func(g *gorm.DB) error { return g.Create(&row).Error }); err != nil {
+		t.Fatalf("a create whose diff says esId, declared as element_key: %v", err)
+	}
+	err = write("FlagRenamed", func(g *gorm.DB) error { return g.Model(&row).Updates(tagged{ElementKey: "es-2"}).Error })
+	if !errors.Is(err, changes.ErrReasonMismatch) || !strings.Contains(err.Error(), "FlagRenamed does not write taggeds.element_key") {
+		t.Fatalf("an update of esId under a reason without element_key: err = %v, want ErrReasonMismatch naming taggeds.element_key", err)
+	}
+}

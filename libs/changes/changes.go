@@ -51,6 +51,7 @@ import (
 	"amadan.net/rastrillo/rastrillo/migrate"
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 )
 
 //go:embed migrations/*.sql
@@ -551,10 +552,7 @@ func (p Policy) fits(st *gorm.Statement, reason, op string) error {
 		}
 		keys := make([]string, 0, len(diff))
 		for k := range diff {
-			if f := st.Schema.LookUpField(k); f != nil && f.DBName != "" {
-				k = f.DBName
-			}
-			keys = append(keys, k)
+			keys = append(keys, columnOf(st.Schema, k))
 		}
 		slices.Sort(keys)
 		for _, k := range keys {
@@ -564,6 +562,25 @@ func (p Policy) fits(st *gorm.Statement, reason, op string) error {
 		}
 	}
 	return nil
+}
+
+// columnOf is the column a diff key names. The key is what diffOf's
+// json.Marshal wrote: the field's JSON tag when it has one (a model
+// whose JSON is an API, `json:"esId"`), else its Go name; an
+// Updates(map) key may be the column itself. A key that names no
+// field stays as it is, and fits refuses it as a column no reason
+// declares.
+func columnOf(s *schema.Schema, key string) string {
+	if f := s.LookUpField(key); f != nil && f.DBName != "" {
+		return f.DBName
+	}
+	for _, f := range s.Fields {
+		name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+		if name == key && f.DBName != "" {
+			return f.DBName
+		}
+	}
+	return key
 }
 
 // rowsOf is the statement's rows: one, or each of a slice.
