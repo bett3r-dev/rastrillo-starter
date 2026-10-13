@@ -124,6 +124,24 @@ Thens. `apps/myapp/oracle` is the pattern.
    A create's diff is the whole row, so a reason that creates lists
    every column.
 
+   A context names its **invariants** beside its reasons
+   (`<context>Invariants` in `reasons_<context>.go`, gathered in
+   `Invariants`, installed as `Policy.Invariants`): each a `Name`, the
+   rule in the business's words, the reasons it `Guards` (may refuse)
+   and, per reason, the tables it `Shapes`. A guard refuses with
+   `Trail.Refuse(ctx, rule, detail)` on a Trail from `Policy.Begin`: it
+   writes nothing, logs one `refused` line, and the handler shows the
+   detail with the rule as `data-rule`; a rule no invariant declares
+   panics under `go test` and fails the request otherwise. A write a
+   rule shapes names it with `By` after `Because`, and its change
+   carries it as `rule`; a shaped write naming no rule
+   (`ErrRuleRequired`) or one that does not shape it
+   (`ErrRuleMismatch`) is refused before SQLite, and `Install` refuses
+   an invariant shaping a table its reason does not write
+   (`ErrBadInvariant`). `invariants_test.go` gives every invariant a
+   scenario, and `verify` holds each record to its rule from the rule
+   column's migration on.
+
    **A change record is a state change that matters to the business**
    (the owner's ruling in blueprint2, 2026-10-10). The audit trail
    answers "what changed, and why", so a transient operation (a poll, a
