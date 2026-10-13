@@ -191,3 +191,19 @@ sources: [code:flowOf (apps/myapp/internal/myapptest/flow_test.go:308-325), code
 rejected: —
 supersedes: —
 A rule on a same-context follow-up change, or on a change with no entry point, is dropped from the map (the extractor's continue), so an invariant shaping only such a change reaches the board as an orphan; no myapp case does this. mixed[].contexts[].rules is always []. The census covers named entry points (not unnamed), every declared reason, every table some reason writes and every declared invariant. The sorting of invariants, guards and shape tables, and the scan's restriction to reasons_* files, are pinned by no test (myapp's declarations are already in order). flowGate's census-error branch has no unit test. Doc round 1 (doc-wording): AGENTS.md now says make flow and flow-check fail on a name with no source; ADR 0003 gains the v2 fields; recheck: skipped (doc round). Gate SKIPs: gitleaks (not repo root), browser (no chromium).
+
+## D25 — the root gate's "PASS with no SKIP" is not met: two SKIPs from the myapp gate, both environment gaps
+kind: shipped-finding
+step: build · slice: 9 · decidedBy: verifier
+sources: [code:apps/myapp/Makefile:284 (RASTRILLO_BROWSER_OPTIONAL), code:root Makefile CI list, log:/tmp/rs20-s9-rootci.log]
+rejected: retrying the slice — neither SKIP is introduced by it, and the slice's own oracle ran
+supersedes: —
+Root make ci: "5 ran, 2 skipped; CI: PASS on what ran". browser: no chromium on this machine; gitleaks inside the app gate: not the repo root (the root's own gitleaks ran, 48 commits, no leaks). The plan's gate "root make ci summary PASS with no SKIP" cannot be met here while the app gate delegates gitleaks; it is reported SKIPPED, not passed. D21 is taken here: readConfig refuses any framework but non-ddd by name, before anything is written. D7's runOver comment now says "as make blueprint-check does".
+
+## D26 — blueprint follow-ups the verifier left open
+kind: shipped-finding
+step: build · slice: 9 · decidedBy: verifier
+sources: [code:tools/cmd/blueprint/repository_test.go:64-70, code:Makefile blueprint target]
+rejected: —
+supersedes: —
+No test pins that the root Makefile has a blueprint target writing under the root (deleting it fails nothing; Steward's extract would break). TestTheRepositorysFlowMapsDrawMyapp expects the whole repository graph to be exactly myapp's nodes, so the first second app with a non-empty flow map fails the root gate; filtering to meta.app == "myapp" would remove the coupling. The blueprint-check recipe's failure on exit 1 has no test (the verifier showed exit 2 on a ddd config and on a collision in clones). framework is top-level in .blueprint.config.json (design.md:25); sibling repos keep designTooling.framework, which Steward does not read. Doc round 1 (doc-wording): AGENTS.md lists the root gate in its real order and points at make blueprint; recheck: skipped (doc round).
