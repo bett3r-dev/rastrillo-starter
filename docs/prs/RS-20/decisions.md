@@ -55,3 +55,27 @@ sources: [code:run (tools/cmd/blueprint/main.go), code:runOver (tools/cmd/bluepr
 rejected: —
 supersedes: —
 graph.json is written with plain os.WriteFile; slice 3 owns "both files are written atomically". Nodes with one id are merged on purpose within one app (an event landed by two entry points is one node), so slice 3's nameCollisions must tell a cross-app clash from the same node landed twice. meta.source is not emitted (slice 2). The app name comes from the directory, not yet cross-checked against v2's app field. [doc] main_test.go:13-14 says runOver runs into a fresh directory "as make blueprint does", which is false: make blueprint writes <root>/.blueprint and blueprint-check (slice 9) uses a temp directory. Slice 9 rewords it.
+
+## D8 — verify's cutoff when 0005 has not run: no ledger row or no rule column holds nothing; a ledgerless database with the column holds everything
+kind: silent-seam
+step: build · slice: 5 · decidedBy: verifier
+sources: [code:ruleCutoff (libs/changes/verify.go), code:migrate apply/adopt applied_at (rastrillo v0.28.0 migrate/apply.go:38-42,326-328, adopt.go:177-179), code:migrate ids (set.go:126,174), design:Starter: libs/changes verify bullet, design:risk 4, xp:RUS-83 D11]
+rejected: a missing 0005 row as a zero cutoff, holding every record (round 0) — a tenant not visited since the deploy is still at 0004, `myapp verify -db` does not migrate, and every record there predates the rule column, so D11 says none is held
+supersedes: —
+The design named the cutoff (the 0005 ledger row's applied_at, now verified: RFC3339Nano UTC text) but not the database without that row. The executor first held every record (strict, like D2); the verifier found it fails verify on any pre-0005 tenant (risk 4) and the fix round made both "no 0005 row" and "no rule column" hold nothing. A ledgerless database with the column (only AutoMigrate builds it) still holds every record. A ledger present with no row but the column present is reachable only by hand-editing; it holds nothing. The comparison is on parsed times in Go because created_at and applied_at use different text formats; a record at exactly applied_at is not held.
+
+## D9 — Verify's call sites stay nil in slice 5; wiring myapp.Invariants into both moves to slice 7
+kind: deviation
+step: build · slice: 5 · decidedBy: orchestrator
+sources: [code:verify subcommand (apps/myapp/cmd/myapp/main.go:174-200), code:TestTheRecordFoldsToTheLiveData (apps/myapp/internal/myapptest/conventions_test.go:237), human]
+rejected: wire them in slice 5 — myapp.Invariants does not exist until slice 6
+supersedes: —
+The plan listed neither call site in slices 6 or 7, yet from slice 7's .By(EveryNewMemberIsWelcomed) on, a nil-invariants Verify reports every welcome change as naming an undeclared rule. conventions_test.go would catch it; the verify subcommand would not (no test runs it). Slice 7's touches now carry cmd/myapp/main.go, cmd/myapp/main_test.go and conventions_test.go, with a test that runs the verify subcommand.
+
+## D10 — not checked by verify: a record naming a declared rule that does not shape its (reason, table); a test name now broader than its cases
+kind: shipped-finding
+step: build · slice: 5 · decidedBy: verifier
+sources: [code:Verify (libs/changes/verify.go), code:TestVerifyWithoutALedgerHoldsEveryRecord (libs/changes/changes_test.go:1133)]
+rejected: —
+supersedes: —
+The design's verify bullet names two checks (an undeclared rule at any age; a shaped record naming none after the cutoff); a record naming a declared rule that does not shape it is refused at write time (ErrRuleMismatch) but not re-checked after the fact. [doc] TestVerifyWithoutALedgerHoldsEveryRecord's middle case (a ledger without the 0005 row) now holds nothing, so its name describes only its first case; a rename is owed.
