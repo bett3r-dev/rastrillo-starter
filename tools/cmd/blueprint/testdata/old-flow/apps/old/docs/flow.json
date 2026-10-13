@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "entry_points": [
+    {
+      "name": "WriteNote",
+      "context": "notes",
+      "reasons": [
+        "NoteWritten"
+      ],
+      "actors": [
+        "member"
+      ]
+    }
+  ],
+  "unnamed": [],
+  "policies": [],
+  "chains": [],
+  "empty": [],
+  "mixed": [],
+  "implicit_crossings": []
+}
