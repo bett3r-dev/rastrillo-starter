@@ -111,3 +111,35 @@ sources: [code:noBleed (apps/myapp/internal/myapptest/scenario_test.go:196-203),
 rejected: —
 supersedes: —
 The executor justified this by noBleed; the verifier found that false: noBleed compares a change's reason context with its table context and never reads invariants, and Install does not enforce an invariant's Context or Guards (D4). A mis-declared invariant would draw a guarded-by edge across subdomains. Owner: Install's check when slice 6 adds the first real invariants, or a slice 3 diagnostic. Policies are guarded by F11 only (the rules their hop names); an invariant shaping a reason only a policy lands draws no command edge.
+
+## D15 — a Trail learns the rules through Policy.Begin and Policy.Logger; every Trail the app opens goes through the installed policy
+kind: silent-seam
+step: build · slice: 6 · decidedBy: executor
+sources: [code:Policy.Begin (libs/changes/changes.go), code:trail (apps/myapp/internal/myapp/handlers.go:52), code:createMember (apps/myapp/internal/myapp/handlers.go:102)]
+rejected: a package-level registry of rules — the conventions forbid a registry; plain changes.Begin with no rules — Refuse on it is always the undeclared-rule error
+supersedes: —
+The design gives Refuse a rule but not how a Trail knows the declared ones. The app keeps its installed policy and opens every Trail with a.policy.Begin; the verifier's round 1 found Join still on changes.Begin (fixed; that line has no behaviour to pin until Join gains a rule). Test fixtures (writes_test.go:64, doorbell_scenario_test.go:158) keep changes.Begin: they never refuse. An agent added later must open its Trail with policy.Begin if it refuses.
+
+## D16 — "panics in tests" is testing.Testing(), captured per Trail at Begin; production returns Refused.Err and the handler renders 500
+kind: silent-seam
+step: build · slice: 6 · decidedBy: executor
+sources: [code:Refuse (libs/changes/changes.go), code:Lenient, LoggerOf (libs/changes/export_test.go)]
+rejected: a global strict flag — it would serialise the parallel libs tests
+supersedes: —
+libs/changes now imports testing in non-test code; the verifier checked the production binary links only testing.Testing and registers no test flags. The handler's a.fail branch on Refused.Err is reachable only outside go test, so no test covers it.
+
+## D17 — the refused line's trace id is `correlation`, not `trace_id`: the design's sentence is wrong, the code is right
+kind: deviation
+step: build · slice: 6 · decidedBy: verifier
+sources: [code:Correlate (libs/telemetry/slog.go:76), design:design.md:205, AGENTS.md convention 2]
+rejected: renaming the stderr field to trace_id — trace_id is the Loki/OTLP name, and AGENTS.md and main.go already say Correlate adds correlation
+supersedes: —
+design.md:205 says telemetry.Correlate adds trace_id. It adds `correlation`, and the scenario asserts it equals X-Correlation-Id. design.md is left as committed; /verify-build may correct the sentence.
+
+## D18 — the invariant binding reads myapp.Rule<Name> anywhere in a scenario file; an invariant's context is held by an app test, not by Install
+kind: deviation
+step: build · slice: 6 · decidedBy: executor
+sources: [code:invariants_test.go (apps/myapp/internal/myapptest), code:binding_test.go, decisions:D4, decisions:D14]
+rejected: parsing Then clauses — binding_test.go reads reasons the same regex way, and the two should agree; checking Context/Guards in Install — left for a later slice
+supersedes: —
+Rules are constants Rule<Name>, beside Reason<Name>. "Appears in a Then" is therefore "named in a scenario file" (a mention in a helper would also bind it). TestEveryInvariantBelongsToItsContext checks names non-empty and unique, a rule sentence, a declared context, and only that context's reasons and tables in Guards and Shapes, which answers D14 and D4's empty or repeated names at the app level. Owed in slice 7: AGENTS.md "Adding an app" lists <context>Invariants and invariants_test.go.
