@@ -167,3 +167,11 @@ sources: [code:readConfig (tools/cmd/blueprint/main.go:360-372), decisions:D6]
 rejected: —
 supersedes: —
 With {"framework":"ddd"} graph.json claims ddd and carries policy produces event, yet topologyViolations is []: a clean bill for a graph illegal under its own framework. The verifier's fix is one line (refuse anything but non-ddd by name, as D6 does); owed to slice 9 or /verify-build. Also carried: the missing-source diagnostic D12 handed to "slice 3 or 8" is not in slice 3, so slice 8's census owns it; report's write-error branch has no test; the grammar test holds a frozen copy of design.md:274's list, and slice 10's contract fixture is the drift guard.
+
+## D22 — slice 7 edits the oracle's vocabulary copy, outside its touches; the census moves in the same commit
+kind: deviation
+step: build · slice: 7 · decidedBy: orchestrator
+sources: [code:apps/myapp/oracle/vocabulary_test.go:98, AGENTS.md "The oracle", scope-check slice 7]
+rejected: a follow-up commit for the oracle — the oracle's vocabulary test fails on any invariant its copy lacks, so the slice's gate would be red without it
+supersedes: —
+scope-check reported CONTAMINATED by this one file; the orchestrator adjudicated it as a census the slice moves (the oracle keeps its own copy of the vocabulary, held to the app's by a test), and the verifier accepted it. The black-box oracle still does not assert `rule` through /changes.json (design's unspecified seams); the rule sentence's wording is pinned by nothing until flow.json v2 (slice 8) carries it and flow-check holds it. The probe (dropping .By) fires at sign-up (422, ErrRuleRequired) rather than at the rule-value assertion, whose RED was shown separately. Gate SKIPs: gitleaks (not repo root) and browser (no chromium).
