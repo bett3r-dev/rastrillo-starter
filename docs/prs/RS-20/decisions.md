@@ -239,3 +239,19 @@ sources: [code:../blueprint-go-non-ddd/apps/server/internal/server/reality/reali
 rejected: a fix round — none leaves a named mitigation unverified
 supersedes: —
 Framework loads the whole reality row (graph and diagnostics, up to 50 MB) and unmarshals it on every design view, live re-read and propose (inside the write transaction); ~23 ms measured for a 10.8 MB graph, and the perf lane never pushes a graph, so "perf budgets passed" is no evidence. Fix: Select the graph only or json_extract(graph, '$.framework'), plus a perf case with a pushed graph. The database error should be logged, not swallowed. The oracle builds its graph by hand (realityIn); pushing design/testdata/myapp-graph.json once would tie it to the real producer. The island connector in this worktree takes its kinds from the server's legalKinds (Board.tsx:224), so a non-ddd board offers policy produces event with no island change; design risk 2 concerns the uncommitted island/board rewrite in ../blueprint-go only. Gate: make -C apps/server ci exit 0 (executor's and verifier's runs); its gitleaks target scanned nothing (not the repository root), and blueprint-go's root make ci was not run.
+
+## D31 — verify-build fixes two review Mediums inline: invariants documented in AGENTS.md, and an unread framework logged
+kind: shipped-finding
+step: verify-build · decidedBy: verify-build
+sources: [review:standards Medium 1 (AGENTS.md convention 2), review:standards Medium blueprint-go 1 (reality.Framework), decisions:D29, decisions:D30]
+rejected: a fix slice through /build — both are small and inside files this branch already touches; reality.Framework logging through slog.Default — the reality package holds no logger, and the design feature's Kit does
+supersedes: D29 (Framework returns string)
+Starter eacf002: AGENTS.md convention 2 gains a paragraph on invariants (Guards, Shapes, Trail.Refuse, By, ErrRuleRequired, ErrRuleMismatch, ErrBadInvariant), beside ReasonWrites' paragraph. blueprint-go ad6add9: reality.Framework returns (string, error) and reads json_extract(graph, '$.framework') instead of the whole row (D30's perf finding); design's framework helper logs a failed read at ERROR with the session and falls back to ddd, so a propose's transaction is still not failed by it (D29's reason holds). TestAnUnreadFrameworkIsDDDAndLogged pins it (RED on the signature first). Downgraded, not fixed: testing.Testing() in libs/changes is D16's decision; the oracle's ruleContext copy is used by no oracle Then (AGENTS.md binds reasons, not invariants, there); the census's literal match (D23) can be satisfied by an unrelated literal.
+
+## D32 — the extractor leaves a refused edge out of graph.json as well as naming it
+kind: shipped-finding
+step: verify-build · decidedBy: verify-build
+sources: [code:tools/cmd/blueprint/diagnostics.go (checkTopology), review:spec Low 1]
+rejected: —
+supersedes: —
+The design says each edge is checked against the grammar and named in topologyViolations; checkTopology also drops it from graph.json, a deviation no D-entry recorded. It is harmless: a violation exits 1, so Steward never pushes that graph. D21's "open" item was closed by D25 (readConfig refuses a framework other than non-ddd).
