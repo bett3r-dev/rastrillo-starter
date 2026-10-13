@@ -23,6 +23,22 @@ const (
 	ReasonWelcomeNoteWritten = "WelcomeNoteWritten"
 )
 
+// The notes context's invariants: each a rule in the business's words,
+// with the reasons it guards (may refuse) or shapes. A refusal names
+// one with Trail.Refuse; TestEveryInvariantIsSpecifiedAndExercised
+// holds each to a scenario's Then.
+const (
+	// ACorrectionChangesSomething refuses a correction that leaves the
+	// note's title and body as they were: nothing would be put right.
+	RuleACorrectionChangesSomething = "ACorrectionChangesSomething"
+)
+
+var notesInvariants = []Invariant{
+	{Name: RuleACorrectionChangesSomething, Context: ContextNotes,
+		Rule:   "A correction must change the note's title or its body.",
+		Guards: []string{ReasonNoteCorrected}},
+}
+
 var notesReasons = []string{
 	ReasonNoteWritten,
 	ReasonNoteCorrected,

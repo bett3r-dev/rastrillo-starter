@@ -2,6 +2,7 @@ package changes_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -1198,5 +1199,116 @@ func TestVerifyBeforeTheRuleMigrationHoldsNoRecord(t *testing.T) {
 	}
 	if ms, err := changes.Verify(g, []string{"notes"}, nil, shapedPolicy().Invariants); err != nil || len(ms) != 0 {
 		t.Fatalf("no rule column and no ledger: Verify = %v, %v; want no mismatch", ms, err)
+	}
+}
+
+// jsonLines is a logger whose lines a test reads back, one map each.
+func jsonLines() (*slog.Logger, func(t *testing.T) []map[string]any) {
+	var buf strings.Builder
+	return slog.New(slog.NewJSONHandler(&buf, nil)), func(t *testing.T) []map[string]any {
+		t.Helper()
+		var out []map[string]any
+		for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+			if line == "" {
+				continue
+			}
+			var m map[string]any
+			if err := json.Unmarshal([]byte(line), &m); err != nil {
+				t.Fatalf("log line %q: %v", line, err)
+			}
+			out = append(out, m)
+		}
+		return out
+	}
+}
+
+// A refusal names a declared rule: it lands nothing, comes back with
+// the rule, its context and the detail, and logs exactly one Info
+// line "refused" naming the rule, the context, the entry point and
+// the actor.
+func TestARefusalLandsNothingAndLogsOneLine(t *testing.T) {
+	t.Parallel()
+	g := openShaped(t)
+	logger, lines := jsonLines()
+	p := shapedPolicy()
+	p.Logger = logger
+	tr := p.Begin("member:3")
+	tr.EntryPoint = "CorrectNote"
+	ref := tr.Refuse(inRequest("req-1"), "ACorrectionChangesSomething", "That correction changes nothing.")
+	if ref.Err != nil || ref.Rule != "ACorrectionChangesSomething" || ref.Context != "notes" || ref.Detail != "That correction changes nothing." {
+		t.Fatalf("Refused = %+v, want the rule, context notes and the detail, no Err", *ref)
+	}
+	got := lines(t)
+	if len(got) != 1 {
+		t.Fatalf("lines = %v, want one", got)
+	}
+	for k, want := range map[string]string{"msg": "refused", "level": "INFO", "rule": "ACorrectionChangesSomething",
+		"context": "notes", "entry_point": "CorrectNote", "actor": "member:3"} {
+		if got[0][k] != want {
+			t.Errorf("line %s = %v, want %q", k, got[0][k], want)
+		}
+	}
+	if n, m := landed(t, g); n != 0 || m != 0 {
+		t.Fatalf("a refusal landed %d notes, %d changes; want 0 and 0", n, m)
+	}
+}
+
+// A rule no invariant declares is a programming error: under go test
+// Refuse panics with ErrUndeclaredRule naming it, whether the name is
+// unknown, empty, or the Trail came from Begin and declares nothing.
+func TestARefusalByAnUndeclaredRulePanicsInTests(t *testing.T) {
+	t.Parallel()
+	logger, lines := jsonLines()
+	p := shapedPolicy()
+	p.Logger = logger
+	nameless := shapedPolicy() // an invariant named "" (decisions D4) is still no rule to refuse by
+	nameless.Logger = logger
+	nameless.Invariants = append(nameless.Invariants, changes.Invariant{Context: "notes", Guards: []string{"NoteCorrected"}})
+	for _, c := range []struct {
+		name string
+		tr   *changes.Trail
+		rule string
+	}{
+		{"unknown", p.Begin("member:3"), "NoSuchRule"},
+		{"empty", nameless.Begin("member:3"), ""},
+		{"from Begin", changes.Begin("member:3"), "ACorrectionChangesSomething"},
+	} {
+		func() {
+			defer func() {
+				err, _ := recover().(error)
+				if !errors.Is(err, changes.ErrUndeclaredRule) || !strings.Contains(err.Error(), `"`+c.rule+`"`) {
+					t.Errorf("%s: recovered %v, want ErrUndeclaredRule naming %q", c.name, err, c.rule)
+				}
+			}()
+			c.tr.Refuse(inRequest("req-1"), c.rule, "no")
+		}()
+	}
+	if got := lines(t); len(got) != 0 {
+		t.Fatalf("an undeclared refusal logged %v, want nothing", got)
+	}
+}
+
+// Outside tests the same programming error does not panic the
+// request: Refused.Err carries ErrUndeclaredRule and nothing is
+// logged as refused.
+func TestARefusalByAnUndeclaredRuleIsAnErrorInProduction(t *testing.T) {
+	t.Parallel()
+	logger, lines := jsonLines()
+	p := shapedPolicy()
+	p.Logger = logger
+	ref := changes.Lenient(p.Begin("member:3")).Refuse(inRequest("req-1"), "NoSuchRule", "no")
+	if !errors.Is(ref.Err, changes.ErrUndeclaredRule) || ref.Rule != "NoSuchRule" {
+		t.Fatalf("Refused = %+v, want Err ErrUndeclaredRule for NoSuchRule", *ref)
+	}
+	if got := lines(t); len(got) != 0 {
+		t.Fatalf("an undeclared refusal logged %v, want nothing", got)
+	}
+}
+
+// A Policy with no Logger logs its refusals to slog.Default().
+func TestARefusalWithoutALoggerUsesTheDefault(t *testing.T) {
+	t.Parallel()
+	if got := changes.LoggerOf(shapedPolicy().Begin("member:3")); got != slog.Default() {
+		t.Fatalf("logger = %p, want slog.Default() %p", got, slog.Default())
 	}
 }

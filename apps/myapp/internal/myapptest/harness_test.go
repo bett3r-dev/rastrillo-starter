@@ -57,13 +57,21 @@ func TestMain(m *testing.M) {
 // handler also records the routes it reaches (coverage_test.go).
 func newApp(t *testing.T) (http.Handler, *db.DB) {
 	t.Helper()
+	return newAppLogging(t, nil)
+}
+
+// newAppLogging is newApp with the app's log lines also handed to
+// also (nil for none), with the trace id on each: a Then that asserts
+// a log line (a refusal's) reads them there.
+func newAppLogging(t *testing.T, also slog.Handler) (http.Handler, *db.DB) {
+	t.Helper()
 	// Errors reach the test's own output (shown when it fails), with
 	// the trace id as main.go's logger puts it on every line: a refused
 	// write's 500 then names the rule, the reason, the table and the
 	// request, not only the status.
 	tl := &testLog{t: t}
 	t.Cleanup(func() { tl.mu.Lock(); tl.done = true; tl.mu.Unlock() })
-	logger := slog.New(telemetry.Correlate(slog.NewTextHandler(tl, &slog.HandlerOptions{Level: slog.LevelError})))
+	logger := slog.New(telemetry.Correlate(telemetry.Tee(slog.NewTextHandler(tl, &slog.HandlerOptions{Level: slog.LevelError}), also)))
 	d, err := db.Open(schema.Path(t), logger)
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)

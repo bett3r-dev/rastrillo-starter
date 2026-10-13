@@ -11,5 +11,6 @@ word's meaning here in the same commit as the code that changes it.
 | welcome note | the note written for a member when they join: this context's policy on `MemberJoined` in accounts, caused by that change (`WelcomeNoteWritten`) | a note the member wrote |
 | a note's history | every change within `note:<id>`, the write first, read back with `changes.InScope`; a welcome note's is outside it (written by the join's Trail, unscoped) | the changes whose entity is the note |
 | correction | a note's text put right by a new change (`NoteCorrected`) whose cause is the change it corrects | an edit that rewrites history |
+| `ACorrectionChangesSomething` | the invariant "A correction must change the note's title or its body.", guarding `NoteCorrected`: a correction posting the note's own title and body is refused (422, the name as `data-rule`), lands nothing and logs one `refused` line | a form error (a missing title), which names no rule |
 
-Tables: `notes`. Reasons: `reasons_notes.go`.
+Tables: `notes`. Reasons and invariants: `reasons_notes.go`.

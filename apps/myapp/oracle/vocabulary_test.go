@@ -15,7 +15,8 @@ import (
 )
 
 // The oracle's own copy of the vocabulary: the reasons a change may
-// carry and which context owns each reason and each table. It is the
+// carry, the invariants a refusal may name, and which context owns
+// each reason, invariant and table. It is the
 // specification a binary is judged by, so it is written out here
 // rather than asked of the binary (/changes.json states no context)
 // or read off the Go code (another implementation has none).
@@ -43,6 +44,13 @@ var reasonContext = map[string]string{
 	ReasonWelcomeNoteWritten: ctxNotes,
 }
 
+// The invariants: each rule's name, and the context that declares it.
+const RuleACorrectionChangesSomething = "ACorrectionChangesSomething"
+
+var ruleContext = map[string]string{
+	RuleACorrectionChangesSomething: ctxNotes,
+}
+
 var tableContext = map[string]string{
 	"members": ctxAccounts,
 
@@ -50,7 +58,8 @@ var tableContext = map[string]string{
 }
 
 // TestTheOracleSpeaksTheAppsVocabulary: the copy above says exactly
-// what reasons_*.go declares, reason for reason and table for table.
+// what reasons_*.go declares, reason for reason, invariant for
+// invariant and table for table.
 // A reason added to the app without its line here fails, as does one
 // moved between contexts.
 func TestTheOracleSpeaksTheAppsVocabulary(t *testing.T) {
@@ -76,6 +85,14 @@ func TestTheOracleSpeaksTheAppsVocabulary(t *testing.T) {
 	}
 	if n != len(tableContext) {
 		t.Errorf("the oracle names %d tables, reasons_*.go %d", len(tableContext), n)
+	}
+	for _, inv := range myapp.Invariants {
+		if ruleContext[inv.Name] != inv.Context {
+			t.Errorf("invariant %s: oracle says %q, reasons_*.go says %q", inv.Name, ruleContext[inv.Name], inv.Context)
+		}
+	}
+	if len(ruleContext) != len(myapp.Invariants) {
+		t.Errorf("the oracle names %d invariants, reasons_*.go %d", len(ruleContext), len(myapp.Invariants))
 	}
 }
 

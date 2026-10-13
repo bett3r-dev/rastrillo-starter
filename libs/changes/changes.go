@@ -41,11 +41,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"testing"
 	"time"
 
 	"amadan.net/rastrillo/rastrillo/migrate"
@@ -197,6 +199,21 @@ type Invariant struct {
 	Shapes              map[string][]string
 }
 
+// ErrUndeclaredRule is a refusal naming a rule no declared invariant
+// has: a programming error, like an undeclared reason. Trail.Refuse
+// panics with it under go test and returns it on Refused.Err
+// otherwise.
+var ErrUndeclaredRule = errors.New("changes: a refusal names a rule no invariant declares")
+
+// Refused is a named refusal: what Trail.Refuse returns for the
+// handler to render (the Detail on screen, the Rule as data-rule).
+// Err is set only when Rule is undeclared outside tests (it is then
+// ErrUndeclaredRule, wrapped): the handler fails the request instead.
+type Refused struct {
+	Rule, Context, Detail string
+	Err                   error
+}
+
 // ErrUndeclaredTable is Install's refusal at boot of a table that is
 // neither tracked, untracked with a reason, nor plumbing: a migration
 // that adds a table nobody decided to explain or not stops the app
@@ -255,13 +272,56 @@ type Trail struct {
 	// onRecord is OnRecord's: told each change as it is recorded, on
 	// the write's own connection.
 	onRecord []func(db *gorm.DB, c Change) error
+	// invariants and logger are the Policy's that opened t (Policy.Begin):
+	// the rules Refuse may name, and where its line goes. A Trail from
+	// Begin has neither, so it declares no rule.
+	invariants []Invariant
+	logger     *slog.Logger
+	// strict is whether Refuse panics on an undeclared rule rather
+	// than returning it on Refused.Err: under go test.
+	strict bool
 }
 
 type ctxKey struct{}
 
 // Begin opens a Trail for one inbound request or tick.
 func Begin(actor string) *Trail {
-	return &Trail{Actor: actor}
+	return &Trail{Actor: actor, strict: testing.Testing()}
+}
+
+// Begin opens a Trail whose refusals are held to p's invariants and
+// logged to p.Logger (slog.Default() when nil): the Begin for a Trail
+// that may Refuse.
+func (p Policy) Begin(actor string) *Trail {
+	t := Begin(actor)
+	t.invariants, t.logger = p.Invariants, p.Logger
+	if t.logger == nil {
+		t.logger = slog.Default()
+	}
+	return t
+}
+
+// Refuse is a named refusal: rule, a declared invariant's name, says
+// no, and detail is what the person is told. It lands nothing (it
+// writes nothing) and logs one Info line, "refused", with rule, the
+// invariant's context, the Trail's entry point and actor, under ctx
+// (so the app's logger can put the request's trace id on it). A rule
+// the Policy that opened t does not declare, or any rule on a Trail
+// from Begin, is a programming error: it panics under go test, and
+// otherwise comes back as Refused.Err (ErrUndeclaredRule) with no
+// line logged.
+func (t *Trail) Refuse(ctx context.Context, rule, detail string) *Refused {
+	i := slices.IndexFunc(t.invariants, func(inv Invariant) bool { return rule != "" && inv.Name == rule })
+	if i < 0 {
+		err := fmt.Errorf("%w: %q (entry point %q)", ErrUndeclaredRule, rule, t.EntryPoint)
+		if t.strict {
+			panic(err)
+		}
+		return &Refused{Rule: rule, Detail: detail, Err: err}
+	}
+	inv := t.invariants[i]
+	t.logger.InfoContext(ctx, "refused", "rule", rule, "context", inv.Context, "entry_point", t.EntryPoint, "actor", t.Actor)
+	return &Refused{Rule: rule, Context: inv.Context, Detail: detail}
 }
 
 // Context returns ctx carrying t, for gorm's WithContext.
@@ -466,6 +526,9 @@ type Policy struct {
 	// and ErrRuleMismatch. Install refuses an invariant shaping a table
 	// its reason does not write in Allow (ErrBadInvariant).
 	Invariants []Invariant
+	// Logger is where a Trail opened by Begin logs its refusals
+	// (Trail.Refuse); nil is slog.Default().
+	Logger *slog.Logger
 	// Untracked is every table whose writes are not explained, each
 	// with the reason it is plumbing (an inbox, a tick ledger). With
 	// Tracked and Plumbing it is the census Install takes at boot: a

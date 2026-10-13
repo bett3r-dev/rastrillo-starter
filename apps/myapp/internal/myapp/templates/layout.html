@@ -93,3 +93,6 @@
 </body>
 </html>
 {{end}}
+{{/* refusal is a named rule's refusal (changes.Refused): the detail
+     is what a person reads; the rule's name is data-rule only. */}}
+{{define "refusal"}}<p role="alert" data-rule="{{.Rule}}">{{.Detail}}</p>{{end}}

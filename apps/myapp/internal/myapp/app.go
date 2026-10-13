@@ -64,8 +64,12 @@ func Router(d *db.DB, origin string, logger *slog.Logger) (chi.Router, error) {
 	// writes through, so there is no unhooked path.
 	// Install also takes the boot census: a table in neither Tracked
 	// nor Untracked stops the app here, named.
-	if err := changes.Install(d.G, changes.Policy{Tracked: Tracked, Untracked: Untracked, Exempt: TrackedExempt, Correlation: Correlation,
-		Allow: ReasonWrites, Committed: ringNotes(bell)}); err != nil {
+	// Invariants are the rules a write must name (By) and a refusal
+	// may (Refuse); a Trail opened by policy.Begin logs its refusals
+	// on the app's logger.
+	policy := changes.Policy{Tracked: Tracked, Untracked: Untracked, Exempt: TrackedExempt, Correlation: Correlation,
+		Allow: ReasonWrites, Invariants: Invariants, Logger: logger, Committed: ringNotes(bell)}
+	if err := changes.Install(d.G, policy); err != nil {
 		return nil, err
 	}
 	// Every statement on the same handle gets a span and a duration
@@ -82,7 +86,7 @@ func Router(d *db.DB, origin string, logger *slog.Logger) (chi.Router, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &app{db: d, logger: logger, sess: sess, bell: bell}
+	a := &app{db: d, logger: logger, sess: sess, bell: bell, policy: policy}
 
 	ph, err := password.New(password.Config{
 		Sessions:     sess,
