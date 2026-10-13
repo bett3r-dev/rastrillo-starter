@@ -161,12 +161,14 @@ Thens. `apps/myapp/oracle` is the pattern.
    entry point's direct facts, the policies (a change caused by one in
    another context) and the chains
    `Command → [context] Event ⟹ [context] Event`. They are generated
-   by `make flow` and never hand-edited; `make ci` fails only when
-   they drift from what the scenarios produce. Nothing in them is a
-   rule: unnamed entry points, mixed-context requests and implicit
-   crossings are reported, not refused. They are the map of what the
-   code does, and `flow.json` (versioned) is what a Blueprint board
-   renders from.
+   by `make flow` and never hand-edited; `make ci` fails when they
+   drift from what the scenarios produce, and `make flow` and
+   `flow-check` both fail when a named entry point, reason, table or
+   invariant in the map has no source in the app's code (the census).
+   Nothing else in them is a rule: unnamed entry points, mixed-context
+   requests and implicit crossings are reported, not refused. They
+   are the map of what the code does, and `flow.json` (versioned) is
+   what a Blueprint board renders from.
 
    A cause counts as a parent only within one request (ADR 0003's
    same-request parent rule, adopted 2026-10-09). A change caused by a

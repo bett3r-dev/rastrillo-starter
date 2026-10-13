@@ -36,6 +36,12 @@ Each entry point's direct facts, followed through the cross-context policies the
 - `Join → [accounts] MemberJoined ⟹ [notes] WelcomeNoteWritten`: TestScenarioAMemberSignsOutAndBackIn, TestScenarioANoteKeepsItsOwnHistory, TestScenarioANoteWithoutATitleIsRefused, TestScenarioAReconnectCatchesUp, TestScenarioARolledBackWriteRingsNothing, TestScenarioAnUnchangedCorrectionIsRefused, TestScenarioCorrectingANote, TestScenarioEveryFormIsAScreenThatLandsNothing, TestScenarioJoining, TestScenarioTheChangeLogIsReadableByAMachine, TestScenarioTheNotesPageSaysWhatRefreshesIt, TestScenarioWritingANote, TestScenarioWritingANoteRingsEveryNotesPage
 - `WriteNote → [notes] NoteWritten`: TestScenarioANoteKeepsItsOwnHistory, TestScenarioAReconnectCatchesUp, TestScenarioARolledBackWriteRingsNothing, TestScenarioAnUnchangedCorrectionIsRefused, TestScenarioCorrectingANote, TestScenarioEveryFormIsAScreenThatLandsNothing, TestScenarioTheChangeLogIsReadableByAMachine, TestScenarioTheNotesPageSaysWhatRefreshesIt, TestScenarioWritingANote, TestScenarioWritingANoteRingsEveryNotesPage
 
+## Rules
+
+Each reason with the rules its changes were landed under (Trail.By), off the entry points and the policies.
+
+- `WelcomeNoteWritten`: EveryNewMemberIsWelcomed
+
 ## Empty entry points
 
 Changes that carry no entry point at all: written outside any routed request by a Trail with no name.

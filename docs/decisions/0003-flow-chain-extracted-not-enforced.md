@@ -235,6 +235,9 @@ The owner's plan:
 - `docs/flow.json` is the source for that rendering. Its shape is
   plain and versioned (`version`, `entry_points`, `unnamed`,
   `policies`, `chains`, `empty`, `mixed`, `implicit_crossings`).
+  Amended 2026-10-13 (RS-20): version 2 adds `app`, `invariants`,
+  `writes` and `sources` at the top, and `rules` on each entry point
+  and policy.
 
 ### Second iteration (not built)
 

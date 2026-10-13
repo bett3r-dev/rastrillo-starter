@@ -253,7 +253,8 @@ escapes:
 # committed copy the scenarios no longer produce (empty or unnamed
 # entry points, mixed-context requests and implicit crossings are
 # reported there, never failed). It writes and reads files Go cannot
-# see, hence -count=1.
+# see, and locates every name of the map in the app's source (a name
+# found nowhere fails both), hence -count=1.
 flow:
 	CGO_ENABLED=0 FLOW_UPDATE=1 go test -count=1 ./internal/myapptest/
 
