@@ -234,7 +234,7 @@ func TestTheRecordFoldsToTheLiveData(t *testing.T) {
 	redirected(t, ana.writesNote("Groceires", "Milk"), "/")
 	redirected(t, luis.writesNote("Rent", "Due on the 10th"), "/")
 	redirected(t, luis.correctsNote(s.note("Groceires").ID, "Groceries", "Milk"), "/")
-	ms, err := changes.Verify(s.db.G, myapp.Tracked, myapp.TrackedExempt, nil)
+	ms, err := changes.Verify(s.db.G, myapp.Tracked, myapp.TrackedExempt, myapp.Invariants)
 	if err != nil {
 		t.Fatal(err)
 	}

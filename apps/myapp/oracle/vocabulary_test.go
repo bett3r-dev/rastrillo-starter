@@ -45,10 +45,14 @@ var reasonContext = map[string]string{
 }
 
 // The invariants: each rule's name, and the context that declares it.
-const RuleACorrectionChangesSomething = "ACorrectionChangesSomething"
+const (
+	RuleACorrectionChangesSomething = "ACorrectionChangesSomething"
+	RuleEveryNewMemberIsWelcomed    = "EveryNewMemberIsWelcomed"
+)
 
 var ruleContext = map[string]string{
 	RuleACorrectionChangesSomething: ctxNotes,
+	RuleEveryNewMemberIsWelcomed:    ctxNotes,
 }
 
 var tableContext = map[string]string{

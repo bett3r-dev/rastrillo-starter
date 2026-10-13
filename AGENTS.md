@@ -257,8 +257,10 @@ rot.
   "why did this change?" without database access. `/changes.json?after=<id>`
   is the same rows for a machine, oldest first, 500 a page, behind
   the same sign-in; its field names (`id, reason, cause, request_id,
-  correlation_id, actor, on_behalf_of, entry_point, scope, table,
-  row_id, op, diff, created_at`) are a contract. A cause that names a
+  correlation_id, actor, on_behalf_of, entry_point, scope, rule,
+  table, row_id, op, diff, created_at`) are a contract; `rule` is
+  absent when no invariant shaped the change, and `/changes` reads it
+  as "by rule <Name>". A cause that names a
   change links to it, so a correction sits one click from what it
   corrects.
 - A mistake is corrected by a new change, never by rewriting: a reason
@@ -291,11 +293,11 @@ with the app's gate green:
 
 1. `migrations.go`: `BootSchema = migrate.Merge(sessions.Schema, changes.Schema, Schema)`.
 2. `models.go`: `Tracked`, `Untracked` (each with its reason), `TrackedExempt`.
-3. `reasons.go` (with `ReasonWrites`) plus one `reasons_<context>.go` (its reasons, tables and `<context>Writes`) and `CONTEXT-<context>.md` per context.
+3. `reasons.go` (with `ReasonWrites` and `Invariants`) plus one `reasons_<context>.go` (its reasons, tables, `<context>Writes` and `<context>Invariants`) and `CONTEXT-<context>.md` per context.
 4. `handlers.go`: `trail(r, entryPoint)`, and an entry point named on every Trail the app opens.
-5. `app.go`: `changes.Install` (with `Untracked: Untracked`, the boot census, and `Allow: ReasonWrites`), `telemetry.DB`, `telemetry.HTTP` first, the `correlation` middleware.
-6. `cmd/<name>/main.go`: `telemetry.Setup`, the `Tee(Correlate(stderr), tel.Logs)` logger, `Shutdown` after `Serve`, the `verify` subcommand, and `exitWhenIdle` behind `<NAME>_IDLE_TIMEOUT` (`libs/activation`, off unset) with its test in `cmd/<name>/main_test.go`.
-7. `internal/<name>test/`: `scenario_test.go` (with `collectFlow` in `given`), `harness_test.go` (`flowGate` after `budget.Main`), `binding_test.go`, `contexts_test.go`, `conventions_test.go`, `flow_test.go`, `writes_test.go`, `coverage_test.go` and `writesites_test.go` (`routeGate` then `writeGate` after `flowGate`, `recordWrites` in `newApp`, the harness logger wrapped in `telemetry.Correlate`), `escapes_test.go` (the escape-hatch census, its roots repointed); the Makefile's `contexts`, `escapes`, `flow`, `flow-check` and `browser` targets, `ci` as `../../scripts/ci-gate $(CI)` with all but `flow` in `CI`, and every conditional target's SKIP line; `make flow` once, and commit `docs/flow.md` and `flow.json`.
+5. `app.go`: `changes.Install` (with `Untracked: Untracked`, the boot census, `Allow: ReasonWrites` and `Invariants: Invariants`), `telemetry.DB`, `telemetry.HTTP` first, the `correlation` middleware.
+6. `cmd/<name>/main.go`: `telemetry.Setup`, the `Tee(Correlate(stderr), tel.Logs)` logger, `Shutdown` after `Serve`, the `verify` subcommand (`changes.Verify` handed `Invariants`, run by a test in `cmd/<name>/main_test.go`), and `exitWhenIdle` behind `<NAME>_IDLE_TIMEOUT` (`libs/activation`, off unset) with its test in `cmd/<name>/main_test.go`.
+7. `internal/<name>test/`: `scenario_test.go` (with `collectFlow` in `given`), `harness_test.go` (`flowGate` after `budget.Main`), `binding_test.go`, `invariants_test.go`, `contexts_test.go`, `conventions_test.go`, `flow_test.go`, `writes_test.go`, `coverage_test.go` and `writesites_test.go` (`routeGate` then `writeGate` after `flowGate`, `recordWrites` in `newApp`, the harness logger wrapped in `telemetry.Correlate`), `escapes_test.go` (the escape-hatch census, its roots repointed); the Makefile's `contexts`, `escapes`, `flow`, `flow-check` and `browser` targets, `ci` as `../../scripts/ci-gate $(CI)` with all but `flow` in `CI`, and every conditional target's SKIP line; `make flow` once, and commit `docs/flow.md` and `flow.json`.
 8. `make dev` and `observe` targets, the dashboard in `ops/observability/dashboards/`.
 
 ## The prompt ledger

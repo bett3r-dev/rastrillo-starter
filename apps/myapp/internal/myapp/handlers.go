@@ -250,9 +250,11 @@ func (a *app) noteCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 // welcome is the notes context's policy on a member joining: a note
-// greeting them, caused by the MemberJoined change it reacts to.
+// greeting them, caused by the MemberJoined change it reacts to and
+// written by the rule EveryNewMemberIsWelcomed, which the change
+// records as its rule.
 func welcome(tx *gorm.DB, t *changes.Trail, m Member, joined changes.Change) error {
-	t.Because(ReasonWelcomeNoteWritten, joined.Ref())
+	t.Because(ReasonWelcomeNoteWritten, joined.Ref()).By(RuleEveryNewMemberIsWelcomed)
 	return tx.Create(&Note{AuthorID: m.ID, Title: "Welcome, " + m.Name}).Error
 }
 
@@ -362,7 +364,9 @@ const changeFeedLimit = 500
 
 // changeJSON is one change as /changes.json carries it. The field
 // names are a contract: a black-box reader (an oracle, another
-// implementation's judge) holds a change to them.
+// implementation's judge) holds a change to them. rule is the
+// invariant that shaped the change, and the key is absent when none
+// did.
 type changeJSON struct {
 	ID            int64           `json:"id"`
 	Reason        string          `json:"reason"`
@@ -373,6 +377,7 @@ type changeJSON struct {
 	OnBehalfOf    string          `json:"on_behalf_of"`
 	EntryPoint    string          `json:"entry_point"`
 	Scope         string          `json:"scope"`
+	Rule          string          `json:"rule,omitempty"`
 	Table         string          `json:"table"`
 	RowID         int64           `json:"row_id"`
 	Op            string          `json:"op"`
@@ -408,7 +413,7 @@ func (a *app) changeFeed(w http.ResponseWriter, r *http.Request) {
 		out = append(out, changeJSON{
 			ID: c.ID, Reason: c.Reason, Cause: c.Cause, RequestID: c.RequestID,
 			CorrelationID: c.CorrelationID, Actor: c.Actor, OnBehalfOf: c.OnBehalfOf,
-			EntryPoint: c.EntryPoint, Scope: c.Scope, Table: c.Entity, RowID: c.EntityID,
+			EntryPoint: c.EntryPoint, Scope: c.Scope, Rule: c.Rule, Table: c.Entity, RowID: c.EntityID,
 			Op: c.Op, Diff: diff, CreatedAt: c.CreatedAt.UTC().Format(time.RFC3339Nano),
 		})
 	}
