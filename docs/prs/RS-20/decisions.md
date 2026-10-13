@@ -143,3 +143,27 @@ sources: [code:invariants_test.go (apps/myapp/internal/myapptest), code:binding_
 rejected: parsing Then clauses — binding_test.go reads reasons the same regex way, and the two should agree; checking Context/Guards in Install — left for a later slice
 supersedes: —
 Rules are constants Rule<Name>, beside Reason<Name>. "Appears in a Then" is therefore "named in a scenario file" (a mention in a helper would also bind it). TestEveryInvariantBelongsToItsContext checks names non-empty and unique, a rule sentence, a declared context, and only that context's reasons and tables in Guards and Shapes, which answers D14 and D4's empty or repeated names at the app level. Owed in slice 7: AGENTS.md "Adding an app" lists <context>Invariants and invariants_test.go.
+
+## D19 — diagnostics' recorded shapes: a context collision is typed "subdomain", a site with no source points at its flow map's line 1, an id collision is named by its id
+kind: deviation
+step: build · slice: 3 · decidedBy: executor
+sources: [code:report (tools/cmd/blueprint/diagnostics.go), blueprint-schema:NameCollision (diagnostics.ts), code:reality.go:244 (blueprint-go)]
+rejected: a NodeType for a context — none fits; omitting sourceless sites — the collision would lose a side
+supersedes: —
+blueprint-schema types NameCollision.type as NodeType and "subdomain" is not one; blueprint-go stores diagnostics opaquely and the board only interpolates the type, so nothing breaks today. A context has no declaration site in flow.json v2, so its site is apps/<app>/docs/flow.json line 1 (a stand-in line). Two names that slug to one id are named by the id; when neither has a source both sites read flow.json:1. Refused edges are dropped from graph.json as pv3's validateTopology does, so their endpoints may also be reported as orphans; the run exits 1 anyway.
+
+## D20 — mixedContextRequests is derived from entry_points, and the four extra keys' fields are camelCase with app
+kind: silent-seam
+step: build · slice: 3 · decidedBy: executor
+sources: [design:F3, code:flowOf (apps/myapp/internal/myapptest/flow_test.go:297-303)]
+rejected: reading flow.json's mixed — it misses an entry point landing in two contexts from separate requests, which F3 draws as two boxes
+supersedes: —
+The key says "requests" while the derivation is per entry point: an entry point listed in two or more contexts, with its contexts and command ids. Fields {app, entryPoint, contexts, commands}, and the other extra keys likewise carry app; the design names none.
+
+## D21 — the grammar is always non-ddd and any framework value is accepted; open: refuse a framework other than non-ddd
+kind: shipped-finding
+step: build · slice: 3 · decidedBy: verifier
+sources: [code:readConfig (tools/cmd/blueprint/main.go:360-372), decisions:D6]
+rejected: —
+supersedes: —
+With {"framework":"ddd"} graph.json claims ddd and carries policy produces event, yet topologyViolations is []: a clean bill for a graph illegal under its own framework. The verifier's fix is one line (refuse anything but non-ddd by name, as D6 does); owed to slice 9 or /verify-build. Also carried: the missing-source diagnostic D12 handed to "slice 3 or 8" is not in slice 3, so slice 8's census owns it; report's write-error branch has no test; the grammar test holds a frozen copy of design.md:274's list, and slice 10's contract fixture is the drift guard.
