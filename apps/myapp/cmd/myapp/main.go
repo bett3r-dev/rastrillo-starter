@@ -185,7 +185,7 @@ func verify(args []string) int {
 		return 2
 	}
 	defer d.Close()
-	ms, err := changes.Verify(d.G, myapp.Tracked, myapp.TrackedExempt)
+	ms, err := changes.Verify(d.G, myapp.Tracked, myapp.TrackedExempt, nil)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2

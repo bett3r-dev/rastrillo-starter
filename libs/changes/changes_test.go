@@ -1049,3 +1049,154 @@ func TestInstallRefusesAShapeItsReasonDoesNotWrite(t *testing.T) {
 		t.Fatalf("Install with every shape written: %v", err)
 	}
 }
+
+// openLedgered is a database built the way an app's is, by
+// migrate.Apply over changes.Schema, so rastrillo's ledger holds the
+// row changes/0005_changes_rule; its applied_at is then set to
+// cutoff, so records can be placed on either side of it. It has no
+// Install: the records Verify is to judge are ones the hook would
+// refuse, written straight into the tables.
+func openLedgered(t *testing.T, cutoff string) *gorm.DB {
+	t.Helper()
+	d, err := db.Open(filepath.Join(t.TempDir(), "v.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	if _, err := migrate.Apply(context.Background(), d, migrate.Merge(changes.Schema)); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.G.AutoMigrate(&note{}); err != nil {
+		t.Fatal(err)
+	}
+	res := d.G.Exec("UPDATE rastrillo_migrations SET applied_at = ? WHERE id = 'changes/0005_changes_rule'", cutoff)
+	if res.Error != nil || res.RowsAffected != 1 {
+		t.Fatalf("setting the 0005 ledger row's applied_at: err %v, %d rows", res.Error, res.RowsAffected)
+	}
+	return d.G
+}
+
+// recorded writes a note and the change that creates it, at
+// createdAt, with rule ("" is NULL), past every check the hook makes.
+func recorded(t *testing.T, g *gorm.DB, id int64, reason, rule, createdAt string) {
+	t.Helper()
+	var r any
+	if rule != "" {
+		r = rule
+	}
+	if err := g.Exec("INSERT INTO notes (id, title) VALUES (?, 'Welcome')", id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Exec("INSERT INTO changes (reason, cause, request_id, correlation_id, actor, entity, entity_id, op, diff, rule, created_at) "+
+		"VALUES (?, 'request:r', 'request:r', 'r', 'agent:welcome', 'notes', ?, 'create', ?, ?, ?)",
+		reason, id, `{"ID":`+strconv.FormatInt(id, 10)+`,"Title":"Welcome"}`, r, createdAt).Error; err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Scenarios "old record not held", "new record held" and "unknown
+// rule" (RUS-83 D11): Verify holds a shaped (reason, table) record to
+// name its rule only when it was created after the 0005 migration
+// added the column, and a record naming a rule no invariant declares
+// at any age. A record that names its rule, and one no rule shapes,
+// say nothing.
+func TestVerifyHoldsRecordsToTheirRulesFromTheRuleColumnOn(t *testing.T) {
+	t.Parallel()
+	g := openLedgered(t, "2026-10-01T00:00:00Z")
+	recorded(t, g, 1, "WelcomeNoteWritten", "", "2026-09-30 12:00:00+00:00")
+	recorded(t, g, 2, "WelcomeNoteWritten", "", "2026-10-02 12:00:00+00:00")
+	recorded(t, g, 3, "NoteWritten", "NoSuchRule", "2026-09-30 12:00:00+00:00")
+	recorded(t, g, 4, "WelcomeNoteWritten", "EveryNewMemberIsWelcomed", "2026-10-02 12:00:00+00:00")
+	recorded(t, g, 5, "NoteWritten", "", "2026-10-02 12:00:00+00:00")
+	ms, err := changes.Verify(g, []string{"notes"}, nil, shapedPolicy().Invariants)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make([]string, len(ms))
+	for i, m := range ms {
+		got[i] = m.String()
+	}
+	want := []string{
+		"notes #2: change #2 is WelcomeNoteWritten, which EveryNewMemberIsWelcomed shapes, and names no rule",
+		"notes #3: change #3 names rule NoSuchRule, which no invariant declares",
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("Verify = %q,\nwant %q", got, want)
+	}
+}
+
+// With the rule column and no ledger (a database AutoMigrate built),
+// Verify holds every shaped record to its rule, however old; with a
+// ledger that has no 0005 row, every record predates the rule and
+// none is held; a ledger applied_at it cannot read is an error, not a
+// silent cutoff.
+func TestVerifyWithoutALedgerHoldsEveryRecord(t *testing.T) {
+	t.Parallel()
+	d, err := db.Open(filepath.Join(t.TempDir(), "v.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	if err := d.G.AutoMigrate(&changes.Change{}, &note{}); err != nil {
+		t.Fatal(err)
+	}
+	recorded(t, d.G, 1, "WelcomeNoteWritten", "", "2001-01-01 00:00:00+00:00")
+	ms, err := changes.Verify(d.G, []string{"notes"}, nil, shapedPolicy().Invariants)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ms) != 1 || ms[0].EntityID != 1 || !strings.Contains(ms[0].Problem, "names no rule") {
+		t.Fatalf("Verify = %v, want the one record that names no rule", ms)
+	}
+
+	g := openLedgered(t, "2026-10-01T00:00:00Z")
+	if err := g.Exec("DELETE FROM rastrillo_migrations WHERE id = ?", changes.RuleMigration).Error; err != nil {
+		t.Fatal(err)
+	}
+	recorded(t, g, 1, "WelcomeNoteWritten", "", "2001-01-01 00:00:00+00:00")
+	if ms, err := changes.Verify(g, []string{"notes"}, nil, shapedPolicy().Invariants); err != nil || len(ms) != 0 {
+		t.Fatalf("a ledger without the 0005 row: Verify = %v, %v; want no mismatch, every record predates the rule", ms, err)
+	}
+
+	g = openLedgered(t, "not a time")
+	if _, err := changes.Verify(g, []string{"notes"}, nil, nil); err == nil || !strings.Contains(err.Error(), changes.RuleMigration) {
+		t.Fatalf("an unreadable applied_at: err = %v, want one naming %s", err, changes.RuleMigration)
+	}
+}
+
+// A tenant still at migration 0004 (no 0005 ledger row, no rule
+// column), verified from a copy that was never migrated: every record
+// predates the rule column, so none is held to name one, and the
+// unknown-rule check, with no column to read, reports nothing and
+// does not fail.
+func TestVerifyBeforeTheRuleMigrationHoldsNoRecord(t *testing.T) {
+	t.Parallel()
+	g := openLedgered(t, "2026-10-01T00:00:00Z")
+	for _, stmt := range []string{
+		"DELETE FROM rastrillo_migrations WHERE id = 'changes/0005_changes_rule'",
+		"ALTER TABLE changes DROP COLUMN rule",
+		"INSERT INTO notes (id, title) VALUES (1, 'Welcome')",
+		"INSERT INTO changes (reason, cause, request_id, correlation_id, actor, entity, entity_id, op, diff, created_at) " +
+			`VALUES ('WelcomeNoteWritten', 'request:r', 'request:r', 'r', 'agent:welcome', 'notes', 1, 'create', '{"ID":1,"Title":"Welcome"}', '2026-09-01 12:00:00+00:00')`,
+	} {
+		if err := g.Exec(stmt).Error; err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	ms, err := changes.Verify(g, []string{"notes"}, nil, shapedPolicy().Invariants)
+	if err != nil {
+		t.Fatalf("Verify on a database without the rule column: %v", err)
+	}
+	if len(ms) != 0 {
+		t.Fatalf("Verify = %v, want no mismatch: the record predates the rule column", ms)
+	}
+
+	// Without the column and without a ledger, too: the column's
+	// absence alone says no record can name a rule.
+	if err := g.Exec("DROP TABLE rastrillo_migrations").Error; err != nil {
+		t.Fatal(err)
+	}
+	if ms, err := changes.Verify(g, []string{"notes"}, nil, shapedPolicy().Invariants); err != nil || len(ms) != 0 {
+		t.Fatalf("no rule column and no ledger: Verify = %v, %v; want no mismatch", ms, err)
+	}
+}
