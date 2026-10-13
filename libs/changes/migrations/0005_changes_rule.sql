@@ -1,0 +1,11 @@
+-- changes_rule
+--
+-- The name of the invariant that shaped each change
+-- (EveryNewMemberIsWelcomed), named by the Trail with By; NULL when no
+-- rule shaped it, which every write was before this column and stays
+-- unless a declared invariant shapes its reason on its table. Nullable
+-- with no default, so a row recorded before this column is read as
+-- shaped by no rule rather than given one. An ADD COLUMN, not a
+-- rebuild, so 0001's append-only triggers stay in place, covering this
+-- column too; TestSchemaAddsItsColumnsAndStaysAppendOnly proves it.
+ALTER TABLE `changes` ADD `rule` text;

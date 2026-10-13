@@ -113,6 +113,11 @@ type Change struct {
 	// change a scoped Trail records carries it, whatever the table or
 	// op, so InScope finds a session's own changes by one equality.
 	Scope string `gorm:"index;not null;default:''"`
+	// Rule is the name of the invariant that shaped this change
+	// (EveryNewMemberIsWelcomed), as the Trail named it with By; NULL
+	// in the table, "" here, when no rule shaped it. A write a declared
+	// invariant shapes cannot land without it (ErrRuleRequired).
+	Rule string `gorm:"default:null"`
 	// Entity is the table, EntityID the row.
 	Entity   string `gorm:"index;not null"`
 	EntityID int64  `gorm:"index;not null"`
@@ -166,6 +171,32 @@ var ErrNotAdmitted = errors.New("changes: the scope does not take this write")
 // wrong reason.
 var ErrReasonMismatch = errors.New("changes: reason does not fit the write")
 
+// ErrRuleMismatch is the refusal of a write whose Trail named a rule
+// (By) that does not shape it: no declared invariant of that name
+// shapes the write's reason on its table.
+var ErrRuleMismatch = errors.New("changes: the named rule does not shape the write")
+
+// ErrRuleRequired is the refusal of a write a declared invariant
+// shapes (its reason on its table) when the Trail named no rule: a
+// shaped write says which rule shaped it, or it does not land.
+var ErrRuleRequired = errors.New("changes: a rule shapes the write and none was named")
+
+// ErrBadInvariant is Install's refusal of an invariant whose Shapes
+// name a table its reason does not write (Policy.Allow): a rule cannot
+// shape a write its reason never makes.
+var ErrBadInvariant = errors.New("changes: an invariant shapes a table its reason does not write")
+
+// Invariant is a business rule a context declares beside its reasons.
+// Name is the identifier a change record and a refusal carry; Rule is
+// the sentence in the business's words. Guards is the reasons the rule
+// may refuse; Shapes is, per reason, the tables whose writes under it
+// the rule shapes, and each such write must name the rule with By.
+type Invariant struct {
+	Name, Context, Rule string
+	Guards              []string
+	Shapes              map[string][]string
+}
+
 // ErrUndeclaredTable is Install's refusal at boot of a table that is
 // neither tracked, untracked with a reason, nor plumbing: a migration
 // that adds a table nobody decided to explain or not stops the app
@@ -215,6 +246,7 @@ type Trail struct {
 
 	reason string
 	cause  string // as given to Because; "" means the request itself
+	rule   string // set by By, cleared by Because; "" means none named
 	// Resolved by require for the statement in flight, used by record.
 	correlation string
 	stmtCause   string
@@ -246,9 +278,24 @@ func From(ctx context.Context) (*Trail, bool) {
 // Because sets the reason for the writes that follow. cause names
 // what led to them; empty means the request itself, recorded as
 // "request:<correlation>" once a write says which request that is.
+//
+// It also clears the rule By named: a rule shapes the writes of one
+// Because, so the next reason's writes name theirs again.
 func (t *Trail) Because(reason, cause string) *Trail {
 	t.reason = reason
 	t.cause = cause
+	t.rule = ""
+	return t
+}
+
+// By names the invariant that shapes the writes under the current
+// Because (EveryNewMemberIsWelcomed), and returns t, so it chains
+// after Because. Each change those writes record carries it as Rule.
+// A named rule that does not shape a write refuses it
+// (ErrRuleMismatch); a write a declared rule shapes, made with none
+// named, is refused too (ErrRuleRequired). Both before SQLite.
+func (t *Trail) By(rule string) *Trail {
+	t.rule = rule
 	return t
 }
 
@@ -413,6 +460,12 @@ type Policy struct {
 	// carries a column outside the list, is refused before SQLite
 	// (ErrReasonMismatch). Nil turns the check off.
 	Allow map[string]Writes
+	// Invariants is every declared business rule. A write whose reason
+	// and table an invariant shapes must name it with By, and a write
+	// naming a rule must be one that rule shapes; see ErrRuleRequired
+	// and ErrRuleMismatch. Install refuses an invariant shaping a table
+	// its reason does not write in Allow (ErrBadInvariant).
+	Invariants []Invariant
 	// Untracked is every table whose writes are not explained, each
 	// with the reason it is plumbing (an inbox, a tick ledger). With
 	// Tracked and Plumbing it is the census Install takes at boot: a
@@ -450,6 +503,9 @@ func Install(g *gorm.DB, p Policy) error {
 		return errors.New("changes: Policy.Correlation is required")
 	}
 	if err := census(g, p); err != nil {
+		return err
+	}
+	if err := p.shapesWritten(); err != nil {
 		return err
 	}
 	set := map[string]bool{}
@@ -503,6 +559,13 @@ func require(db *gorm.DB, tracked map[string]bool, p Policy, op string) {
 	}
 	if err := p.fits(st, t.reason, op); err != nil {
 		_ = db.AddError(err)
+		return
+	}
+	if shaping := p.shaping(t.reason, st.Table); t.rule != "" && !slices.Contains(shaping, t.rule) {
+		_ = db.AddError(fmt.Errorf("%w: %s does not shape %s on %s", ErrRuleMismatch, t.rule, t.reason, st.Table))
+		return
+	} else if t.rule == "" && len(shaping) > 0 {
+		_ = db.AddError(fmt.Errorf("%w: %s on %s is shaped by %s; name it with By", ErrRuleRequired, t.reason, st.Table, strings.Join(shaping, ", ")))
 		return
 	}
 	if t.scopeErr != nil {
@@ -592,6 +655,38 @@ func (p Policy) fits(st *gorm.Statement, reason, op string) error {
 				return fmt.Errorf("%w: %s does not write %s.%s", ErrReasonMismatch, reason, st.Table, k)
 			}
 		}
+	}
+	return nil
+}
+
+// shaping is the names of the invariants that shape reason on table,
+// in the order they are declared.
+func (p Policy) shaping(reason, table string) []string {
+	var names []string
+	for _, inv := range p.Invariants {
+		if slices.Contains(inv.Shapes[reason], table) {
+			names = append(names, inv.Name)
+		}
+	}
+	return names
+}
+
+// shapesWritten refuses an invariant that shapes a table its reason
+// does not write (Allow), each such shape named.
+func (p Policy) shapesWritten() error {
+	var bad []string
+	for _, inv := range p.Invariants {
+		for reason, tables := range inv.Shapes {
+			for _, table := range tables {
+				if _, ok := p.Allow[reason][table]; !ok {
+					bad = append(bad, fmt.Sprintf("%s shapes %s on %s", inv.Name, reason, table))
+				}
+			}
+		}
+	}
+	if len(bad) > 0 {
+		slices.Sort(bad)
+		return fmt.Errorf("%w: %s", ErrBadInvariant, strings.Join(bad, "; "))
 	}
 	return nil
 }
@@ -767,6 +862,7 @@ func record(db *gorm.DB, tracked map[string]bool, op string, committed func([]st
 			Actor:         t.Actor,
 			OnBehalfOf:    t.OnBehalfOf,
 			Scope:         t.scope,
+			Rule:          t.rule,
 			EntryPoint:    entryPoint(t, st.Context),
 			Entity:        st.Table,
 			EntityID:      id,

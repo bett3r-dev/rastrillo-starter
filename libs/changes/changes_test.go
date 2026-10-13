@@ -181,8 +181,9 @@ func TestAWriteOnBehalfOfAMemberRecordsBoth(t *testing.T) {
 
 // The migrations, not AutoMigrate, are what every app boots with:
 // they must give changes the on_behalf_of and scope columns (scope
-// indexed), empty for rows recorded before them, and keep the table
-// append-only.
+// indexed), empty for rows recorded before them, and the nullable rule
+// column, NULL for them; and keep the table append-only, the rule
+// column included.
 func TestSchemaAddsItsColumnsAndStaysAppendOnly(t *testing.T) {
 	t.Parallel()
 	d, err := db.Open(filepath.Join(t.TempDir(), "s.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -209,8 +210,28 @@ func TestSchemaAddsItsColumnsAndStaysAppendOnly(t *testing.T) {
 	if idx != 1 {
 		t.Fatal("the migrations left changes.scope unindexed")
 	}
-	if err := d.G.Exec("UPDATE changes SET on_behalf_of = 'member:1'").Error; err == nil || !strings.Contains(err.Error(), "append-only") {
-		t.Fatalf("UPDATE on changes: err = %v, want the append-only trigger", err)
+	var notNull []int
+	if err := d.G.Raw("SELECT \"notnull\" FROM pragma_table_info('changes') WHERE name = 'rule'").Scan(&notNull).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(notNull, []int{0}) {
+		t.Fatalf("changes.rule notnull = %v, want one nullable column", notNull)
+	}
+	var unruled int64
+	if err := d.G.Raw("SELECT count(*) FROM changes WHERE rule IS NULL").Scan(&unruled).Error; err != nil {
+		t.Fatal(err)
+	}
+	if unruled != 1 {
+		t.Fatalf("%d rows with a NULL rule, want the row recorded without one", unruled)
+	}
+	for _, stmt := range []string{
+		"UPDATE changes SET on_behalf_of = 'member:1'",
+		"UPDATE changes SET rule = 'EveryNewMemberIsWelcomed'",
+		"DELETE FROM changes",
+	} {
+		if err := d.G.Exec(stmt).Error; err == nil || !strings.Contains(err.Error(), "append-only") {
+			t.Fatalf("%s: err = %v, want the append-only trigger", stmt, err)
+		}
 	}
 }
 
@@ -847,5 +868,184 @@ func TestInstallRefusesAnUndeclaredTableByName(t *testing.T) {
 	p.Untracked = map[string]string{"planted_inbox": "an inbox", "planted_ledger": "a tick ledger"}
 	if err := changes.Install(d.G, p); err != nil {
 		t.Fatalf("Install with both declared untracked: %v", err)
+	}
+}
+
+// note is a table an invariant shapes, named as the welcome policy's.
+type note struct {
+	ID    int64
+	Title string
+}
+
+// openShaped is a database whose policy declares the welcome
+// invariant: EveryNewMemberIsWelcomed shapes WelcomeNoteWritten on
+// notes, and ACorrectionChangesSomething guards NoteCorrected but
+// shapes nothing.
+func openShaped(t *testing.T) *gorm.DB {
+	t.Helper()
+	d, err := db.Open(filepath.Join(t.TempDir(), "c.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	if err := d.G.AutoMigrate(&changes.Change{}, &note{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := changes.Install(d.G, shapedPolicy()); err != nil {
+		t.Fatal(err)
+	}
+	return d.G
+}
+
+func shapedPolicy() changes.Policy {
+	return changes.Policy{
+		Tracked:     []string{"notes"},
+		Correlation: correlation,
+		Allow: map[string]changes.Writes{
+			"WelcomeNoteWritten": {"notes": {"id", "title"}},
+			"NoteWritten":        {"notes": {"id", "title"}},
+			"NoteCorrected":      {"notes": {"title"}},
+		},
+		Invariants: []changes.Invariant{
+			{Name: "EveryNewMemberIsWelcomed", Context: "notes", Rule: "Every member who joins gets a welcome note.",
+				Shapes: map[string][]string{"WelcomeNoteWritten": {"notes"}}},
+			{Name: "ACorrectionChangesSomething", Context: "notes", Rule: "A correction must change the note's title or its body.",
+				Guards: []string{"NoteCorrected"}},
+		},
+	}
+}
+
+// landed is how many notes and changes the database holds.
+func landed(t *testing.T, g *gorm.DB) (notes, records int64) {
+	t.Helper()
+	g.Model(&note{}).Count(&notes)
+	g.Model(&changes.Change{}).Count(&records)
+	return notes, records
+}
+
+// Scenario "rule required": a write a declared rule shapes, made
+// without naming it, is refused before SQLite, naming the reason, the
+// table and the rule, and nothing lands.
+func TestAShapedWriteWithoutItsRuleIsRefused(t *testing.T) {
+	t.Parallel()
+	g := openShaped(t)
+	tr := changes.Begin("agent:welcome").Because("WelcomeNoteWritten", "")
+	err := g.WithContext(tr.Context(inRequest("req-1"))).Create(&note{Title: "Welcome"}).Error
+	if !errors.Is(err, changes.ErrRuleRequired) {
+		t.Fatalf("err = %v, want ErrRuleRequired", err)
+	}
+	for _, name := range []string{"WelcomeNoteWritten", "notes", "EveryNewMemberIsWelcomed"} {
+		if !strings.Contains(err.Error(), name) {
+			t.Errorf("err = %q, want it to name %q", err, name)
+		}
+	}
+	if n, m := landed(t, g); n != 0 || m != 0 {
+		t.Fatalf("a refused write landed: %d notes, %d changes; want 0 and 0", n, m)
+	}
+}
+
+// Scenario "rule recorded": the write that names its rule with By
+// lands, and its change carries the rule, in the Trail and the table.
+func TestAShapedWriteRecordsItsRule(t *testing.T) {
+	t.Parallel()
+	g := openShaped(t)
+	tr := changes.Begin("agent:welcome").Because("WelcomeNoteWritten", "").By("EveryNewMemberIsWelcomed")
+	if err := g.WithContext(tr.Context(inRequest("req-1"))).Create(&note{Title: "Welcome"}).Error; err != nil {
+		t.Fatalf("a shaped write naming its rule: %v", err)
+	}
+	if c, _ := tr.Last(); c.Rule != "EveryNewMemberIsWelcomed" {
+		t.Fatalf("recorded rule = %q, want EveryNewMemberIsWelcomed", c.Rule)
+	}
+	var rule string
+	g.Raw("SELECT rule FROM changes").Scan(&rule)
+	if rule != "EveryNewMemberIsWelcomed" {
+		t.Fatalf("changes.rule = %q, want EveryNewMemberIsWelcomed", rule)
+	}
+}
+
+// A named rule that does not shape the write is refused, naming the
+// reason, the table and the rule: a declared rule that only guards,
+// a rule on a reason it does not shape, and a rule nobody declared.
+func TestAWriteNamingAnotherRuleIsRefused(t *testing.T) {
+	t.Parallel()
+	g := openShaped(t)
+	for _, c := range []struct{ reason, rule string }{
+		{"WelcomeNoteWritten", "ACorrectionChangesSomething"},
+		{"NoteWritten", "EveryNewMemberIsWelcomed"},
+		{"WelcomeNoteWritten", "NoSuchRule"},
+	} {
+		tr := changes.Begin("agent:welcome").Because(c.reason, "").By(c.rule)
+		err := g.WithContext(tr.Context(inRequest("req-1"))).Create(&note{Title: "Welcome"}).Error
+		if !errors.Is(err, changes.ErrRuleMismatch) {
+			t.Errorf("%s by %s: err = %v, want ErrRuleMismatch", c.reason, c.rule, err)
+			continue
+		}
+		for _, name := range []string{c.reason, "notes", c.rule} {
+			if !strings.Contains(err.Error(), name) {
+				t.Errorf("%s by %s: err = %q, want it to name %q", c.reason, c.rule, err, name)
+			}
+		}
+	}
+	if n, m := landed(t, g); n != 0 || m != 0 {
+		t.Fatalf("a refused write landed: %d notes, %d changes; want 0 and 0", n, m)
+	}
+}
+
+// By names the rule for the writes under the current Because only: a
+// new Because clears it, so a second shaped write must name it again,
+// and an unshaped write after it records no rule (NULL, not "").
+func TestANewBecauseClearsTheRule(t *testing.T) {
+	t.Parallel()
+	g := openShaped(t)
+	tr := changes.Begin("agent:welcome").Because("WelcomeNoteWritten", "").By("EveryNewMemberIsWelcomed")
+	w := g.WithContext(tr.Context(inRequest("req-1")))
+	if err := w.Create(&note{Title: "Welcome"}).Error; err != nil {
+		t.Fatalf("the first shaped write: %v", err)
+	}
+	tr.Because("WelcomeNoteWritten", "")
+	if err := w.Create(&note{Title: "Again"}).Error; !errors.Is(err, changes.ErrRuleRequired) {
+		t.Fatalf("a shaped write after a new Because: err = %v, want ErrRuleRequired", err)
+	}
+	tr.Because("NoteWritten", "")
+	if err := w.Create(&note{Title: "Plain"}).Error; err != nil {
+		t.Fatalf("an unshaped write after a new Because: %v", err)
+	}
+	if c, _ := tr.Last(); c.Rule != "" {
+		t.Fatalf("the unshaped write recorded rule %q, want none", c.Rule)
+	}
+	var null int64
+	g.Raw("SELECT count(*) FROM changes WHERE rule IS NULL").Scan(&null)
+	if null != 1 {
+		t.Fatalf("%d changes with a NULL rule, want the unshaped one", null)
+	}
+}
+
+// A shaped table must be one its reason writes: Install refuses an
+// invariant whose Shapes name a (reason, table) Allow does not, each
+// one named with its rule, reason and table, in a sorted list; a
+// policy whose shapes are all written installs.
+func TestInstallRefusesAShapeItsReasonDoesNotWrite(t *testing.T) {
+	t.Parallel()
+	d, err := db.Open(filepath.Join(t.TempDir(), "c.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	if err := d.G.AutoMigrate(&changes.Change{}, &note{}); err != nil {
+		t.Fatal(err)
+	}
+	p := shapedPolicy()
+	p.Invariants = append(p.Invariants, changes.Invariant{Name: "EveryCorrectionIsFiled", Context: "notes",
+		Rule: "Every correction is filed.", Shapes: map[string][]string{"NoteCorrected": {"files"}, "AFileFiled": {"notes"}}})
+	err = changes.Install(d.G, p)
+	if !errors.Is(err, changes.ErrBadInvariant) {
+		t.Fatalf("Install with two shapes no reason writes: err = %v, want ErrBadInvariant", err)
+	}
+	want := "EveryCorrectionIsFiled shapes AFileFiled on notes; EveryCorrectionIsFiled shapes NoteCorrected on files"
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("err = %q, want it to name both shapes, sorted: %q", err, want)
+	}
+	if err := changes.Install(d.G, shapedPolicy()); err != nil {
+		t.Fatalf("Install with every shape written: %v", err)
 	}
 }
