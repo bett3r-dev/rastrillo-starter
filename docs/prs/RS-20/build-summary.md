@@ -15,6 +15,10 @@ slices:
     verifier: pass
     redBeforeGreen: true
     postDesignDecisions: [D5, D6, D7]
+    usage:
+      executor: { model: "claude-opus-5-5", effort: "medium", tokens: 2017567, activeMs: 315121 }
+      verifier: { model: "claude-opus-5-5", effort: "medium", tokens: 881640, activeMs: 164199 }
+      testRunner: { model: "claude-haiku-5-5", effort: "medium", tokens: 29730, activeMs: 6970 }
   - id: 2
     name: "The full mapping: policies, invariants, tables, agents and every non-ddd edge"
     origin: plan
@@ -28,6 +32,10 @@ slices:
     verifier: pass
     redBeforeGreen: true
     postDesignDecisions: [D11, D12, D13, D14]
+    usage:
+      executor: { model: "claude-opus-5-5", effort: "medium", tokens: 2086678, activeMs: 355942 }
+      verifier: { model: "claude-opus-5-5", effort: "medium", tokens: 947372, activeMs: 208052 }
+      testRunner: { model: "claude-haiku-5-5", effort: "medium", tokens: 104676, activeMs: 24362 }
   - id: 3
     name: "Diagnostics: the non-ddd grammar, collisions and orphans; exit 1 only on violations and collisions"
     origin: plan
@@ -41,6 +49,10 @@ slices:
     verifier: pass
     redBeforeGreen: true
     postDesignDecisions: [D19, D20, D21]
+    usage:
+      executor: { model: "claude-opus-5-5", effort: "medium", tokens: 3215386, activeMs: 485182 }
+      verifier: { model: "claude-opus-5-5", effort: "medium", tokens: 1357704, activeMs: 202238 }
+      testRunner: { model: "claude-haiku-5-5", effort: "medium", tokens: 96609, activeMs: 20801 }
   - id: 4
     name: "A change carries the rule that shaped it; a shaped write without it, or with the wrong one, is refused"
     origin: plan
@@ -53,6 +65,10 @@ slices:
     verifier: pass
     redBeforeGreen: true
     postDesignDecisions: [D1, D2, D3, D4]
+    usage:
+      executor: { model: "claude-opus-5-5", effort: "medium", tokens: 1263936, activeMs: 244324 }
+      verifier: { model: "claude-opus-5-5", effort: "medium", tokens: 558766, activeMs: 145704 }
+      testRunner: { model: "claude-haiku-5-5", effort: "medium", tokens: 30392, activeMs: 7700 }
   - id: 5
     name: "verify holds records to their rules, from the rule column's migration onward"
     origin: plan
@@ -66,6 +82,10 @@ slices:
     verifier: pass
     redBeforeGreen: true
     postDesignDecisions: [D8, D9, D10]
+    usage:
+      executor: { model: "claude-opus-5-5", effort: "medium", tokens: 1574226, activeMs: 473203 }
+      verifier: { model: "claude-opus-5-5", effort: "medium", tokens: 1221388, activeMs: 348549 }
+      testRunner: { model: "claude-haiku-5-5", effort: "medium", tokens: 61947, activeMs: 21026 }
   - id: 6
     name: "An unchanged correction is refused by ACorrectionChangesSomething"
     origin: plan
@@ -79,6 +99,10 @@ slices:
     verifier: pass
     redBeforeGreen: true
     postDesignDecisions: [D15, D16, D17, D18]
+    usage:
+      executor: { model: "claude-opus-5-5", effort: "medium", tokens: 5725314, activeMs: 666074 }
+      verifier: { model: "claude-opus-5-5", effort: "medium", tokens: 1823751, activeMs: 341046 }
+      testRunner: { model: "claude-haiku-5-5", effort: "medium", tokens: 101049, activeMs: 38632 }
   - id: 7
     name: "The welcome note carries EveryNewMemberIsWelcomed, and /changes shows the rule"
     origin: plan
@@ -91,6 +115,10 @@ slices:
     verifier: pass
     redBeforeGreen: true
     postDesignDecisions: [D22]
+    usage:
+      executor: { model: "claude-opus-5-5", effort: "medium", tokens: 2271186, activeMs: 259220 }
+      verifier: { model: "claude-opus-5-5", effort: "medium", tokens: 703375, activeMs: 137274 }
+      testRunner: { model: "claude-haiku-5-5", effort: "medium", tokens: 29909, activeMs: 13264 }
   - id: 8
     name: "flow.json v2: rules, invariants, writes and sources"
     origin: plan
@@ -104,6 +132,10 @@ slices:
     verifier: pass
     redBeforeGreen: true
     postDesignDecisions: [D23, D24]
+    usage:
+      executor: { model: "claude-opus-5-5", effort: "medium", tokens: 3282416, activeMs: 458667 }
+      verifier: { model: "claude-opus-5-5", effort: "medium", tokens: 1344076, activeMs: 211093 }
+      testRunner: { model: "claude-haiku-5-5", effort: "medium", tokens: 29347, activeMs: 14452 }
   - id: 9
     name: "make blueprint over the repository's committed flow maps, gated in make ci"
     origin: plan
@@ -117,6 +149,10 @@ slices:
     verifier: pass
     redBeforeGreen: true
     postDesignDecisions: [D25, D26]
+    usage:
+      executor: { model: "claude-opus-5-5", effort: "medium", tokens: 1231889, activeMs: 223177 }
+      verifier: { model: "claude-opus-5-5", effort: "medium", tokens: 927801, activeMs: 180522 }
+      testRunner: { model: "claude-haiku-5-5", effort: "medium", tokens: 44490, activeMs: 9471 }
   - id: 10
     name: "blueprint-go: the edge grammar by framework, held to the starter's graph by a contract fixture"
     origin: plan
@@ -129,6 +165,10 @@ slices:
     verifier: pass
     redBeforeGreen: true
     postDesignDecisions: [D27, D28]
+    usage:
+      executor: { model: "claude-opus-5-5", effort: "medium", tokens: 821827, activeMs: 215927 }
+      verifier: { model: "claude-opus-5-5", effort: "medium", tokens: 812305, activeMs: 148664 }
+      testRunner: { model: "claude-haiku-5-5", effort: "medium", tokens: 88354, activeMs: 28335 }
   - id: 11
     name: "blueprint-go: a session takes its framework from its latest reality graph"
     origin: plan
@@ -141,6 +181,17 @@ slices:
     verifier: pass
     redBeforeGreen: true
     postDesignDecisions: [D29, D30]
+    usage:
+      executor: { model: "claude-opus-5-5", effort: "medium", tokens: 4078728, activeMs: 405247 }
+      verifier: { model: "claude-opus-5-5", effort: "medium", tokens: 1388052, activeMs: 189660 }
+      testRunner: { model: "claude-haiku-5-5", effort: "medium", tokens: 81347, activeMs: 27939 }
+verifyBuild:
+  usage: { model: "claude-opus-5-5", effort: "medium", tokens: 7781554, activeMs: 714849 }
+  gate: { mode: "make ci (repo gate, fallback: no .claude/gate.mjs; whole-repo, no scoped mode) + make -C apps/server ci in blueprint-go", verdict: PASS, skipped: ["gitleaks (apps/myapp: not the repository root)", "browser (no chromium)", "gitleaks (blueprint-go apps/server: scanned nothing, prints no SKIP line)"], inconclusive: [] }
+  coherence: { critical: 0, medium: 2, low: 15, shippedUnresolved: 15 }
+  fixSlicesAdded: 0
+  adrs: ["0003-flow-chain-extracted-not-enforced (amended in slice 8; no new ADR owed)"]
+  concerns: { hard: 0, soft: 0, unmet: [] }
 ---
 ## What shipped
 
@@ -174,3 +225,5 @@ Fourth /build invocation, attended, verify depth full, executor gate scoped, `wo
 - Slice 11 (blueprint-go 93832c8): reality.Framework, wired by root into design's Deps; propose, the batch refusal message and the view's legalKinds use the session's framework; instructions.txt gains the non-ddd grammar; nothing under apps/server/island changed. AGENTS.md and CONTEXT-design.md reworded (D28 closed). Follow-ups in D30: Framework reads the whole reality row on every view and propose; a swallowed database error.
 
 Gates run: `make -C apps/server ci` in blueprint-go, exit 0, on both slices (vet, staticcheck, govulncheck, budgets, tests, perf, migration check, contexts, flow-check, island-check, steward-checks). That gate has no ci-gate summary; its gitleaks target scanned nothing (not the repository root), a SKIP in substance, and blueprint-go's root `make ci` was not run. Nothing is pushed: the owner's brief said not to push.
+
+verify-build, attended, in the primary checkout. Gate on the final heads: root `make ci` "5 ran, 2 skipped; CI: PASS on what ran" (gitleaks inside the app gate, browser: SKIPs, not passes) and blueprint-go `make -C apps/server ci` exit 0 (7 packages ran uncached; its gitleaks scanned nothing). Review: 0 Critical, 2 Medium fixed inline (starter eacf002, AGENTS.md documents invariants; blueprint-go ad6add9, an unread framework is logged and only the field is read; D31), 15 Low shipped with recommendations. No fix slices, no new ADR (ADR 0003 amended in slice 8). Concerns: none raised. Usage is copied from run-metrics' fragment (outcome=ok, droppedDetached=0). Nothing is pushed and no PR is opened: the starter has no remote, and the owner's brief said not to push.
