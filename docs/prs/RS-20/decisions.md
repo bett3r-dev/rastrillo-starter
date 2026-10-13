@@ -223,3 +223,19 @@ sources: [code:../blueprint-go-non-ddd/apps/server/AGENTS.md:589-591, code:CONTE
 rejected: a doc round in slice 10 — slice 11 changes the same sentences again (the framework comes from the session), so one edit there
 supersedes: —
 apps/server/AGENTS.md still describes one 37-rule grammar: slice 11's touches now include it (an orchestrator edit to .work/slices.yaml), with CONTEXT-design.md's "Every board is ddd for now", which slice 11 makes false. view.go's legalKinds reads rules directly and stays ddd until slice 11. The fixture holds only the 6 edge kinds myapp emits; external-system invokes command and ui invokes command are pinned by each side's exact-set test only (design risk 1). Gate: make -C apps/server ci exit 0 (executor's run); its gitleaks target scans only at the repository root, so it scanned nothing (a SKIP in substance, though it prints no SKIP line), and the root make ci of blueprint-go was not run.
+
+## D29 — Framework returns string and falls back to ddd silently; the agent learns the framework from graph.json
+kind: silent-seam
+step: build · slice: 11 · decidedBy: executor
+sources: [code:../blueprint-go-non-ddd/apps/server/internal/server/reality/reality.go (Framework), code:design/design.go Deps.Framework, code:steward/method/instructions.txt, code:servertest TestScenarioASessionTakesItsFrameworkFromItsLatestReality]
+rejected: Framework returning an error — the slice fixes the signature as string; inside propose's transaction a database error would fail the writes too
+supersedes: —
+A database error, a non-string framework or unreadable JSON all read as ddd; none is pinned by a test. A nil Deps.Framework is ddd (the Deps "nil does nothing" pattern); production always wires it and removing the wiring fails the oracle. Any non-empty value passes through and grammar() maps the unknown to ddd (D27). instructions.txt tells the design agent the board's framework is .blueprint/graph.json's top-level framework (the design is silent; Steward pushes that same file before the turn), and TestTheDesignAgentIsToldTheNonDDDGrammar holds its edge list to AllowedEdgeKinds. The oracle adds a "latest push decides" block the plan did not list: a re-push without framework refuses the next policy-produces edge and the edge already proposed stays standing. AGENTS.md's two-grammar bullet and CONTEXT-design.md's "every board is ddd" were reworded here (D28 closed); CONTEXT-reality.md gains `framework`. Executor: opus, gate scoped, 0 fix rounds (blueprint-go commit 93832c8).
+
+## D30 — slice 11 follow-ups the verifier left open
+kind: shipped-finding
+step: build · slice: 11 · decidedBy: verifier
+sources: [code:../blueprint-go-non-ddd/apps/server/internal/server/reality/reality.go:322-324, code:perf_test.go, code:island/src/Board.tsx:224]
+rejected: a fix round — none leaves a named mitigation unverified
+supersedes: —
+Framework loads the whole reality row (graph and diagnostics, up to 50 MB) and unmarshals it on every design view, live re-read and propose (inside the write transaction); ~23 ms measured for a 10.8 MB graph, and the perf lane never pushes a graph, so "perf budgets passed" is no evidence. Fix: Select the graph only or json_extract(graph, '$.framework'), plus a perf case with a pushed graph. The database error should be logged, not swallowed. The oracle builds its graph by hand (realityIn); pushing design/testdata/myapp-graph.json once would tie it to the real producer. The island connector in this worktree takes its kinds from the server's legalKinds (Board.tsx:224), so a non-ddd board offers policy produces event with no island change; design risk 2 concerns the uncommitted island/board rewrite in ../blueprint-go only. Gate: make -C apps/server ci exit 0 (executor's and verifier's runs); its gitleaks target scanned nothing (not the repository root), and blueprint-go's root make ci was not run.

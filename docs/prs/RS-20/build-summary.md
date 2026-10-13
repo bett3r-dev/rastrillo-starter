@@ -120,27 +120,27 @@ slices:
   - id: 10
     name: "blueprint-go: the edge grammar by framework, held to the starter's graph by a contract fixture"
     origin: plan
-    mode: null
-    modeReason: null
-    commit: null
-    passed: false
-    attempts: 0
+    mode: sequential
+    modeReason: pool=0
+    commit: 61cecff (blueprint-go)
+    passed: true
+    attempts: 1
     fixRounds: []
-    verifier: null
-    redBeforeGreen: null
-    postDesignDecisions: []
+    verifier: pass
+    redBeforeGreen: true
+    postDesignDecisions: [D27, D28]
   - id: 11
     name: "blueprint-go: a session takes its framework from its latest reality graph"
     origin: plan
-    mode: null
-    modeReason: null
-    commit: null
-    passed: false
-    attempts: 0
+    mode: sequential
+    modeReason: pool=0
+    commit: 93832c8 (blueprint-go)
+    passed: true
+    attempts: 1
     fixRounds: []
-    verifier: null
-    redBeforeGreen: null
-    postDesignDecisions: []
+    verifier: pass
+    redBeforeGreen: true
+    postDesignDecisions: [D29, D30]
 ---
 ## What shipped
 
@@ -167,3 +167,10 @@ Third /build invocation, attended, in the primary checkout, verify depth full, e
 - Slice 9: make blueprint and blueprint-check (in the root CI list), .blueprint/ ignored, .blueprint.config.json committed; the extractor refuses a framework but non-ddd (D21 closed); D7's comment reworded. Follow-ups in D26 (the repository test assumes myapp is the only app; no test pins the blueprint target).
 
 Gates run: `make -C apps/myapp ci` (slices 7, 8) and root `make ci` (slice 9): "5 ran, 2 skipped; CI: PASS on what ran". The two SKIPs are the myapp gate's gitleaks (not the repository root; the root's gitleaks ran clean over 48 commits) and browser (no Chromium). They are SKIPs, not passes, and slice 9's planned gate "PASS with no SKIP" is not met (D25). blueprint-go has not been touched. Nothing is pushed: the owner's brief said not to push.
+
+Fourth /build invocation, attended, verify depth full, executor gate scoped, `worktree-pool size` said pool=0 (10→11 is a chain), every executor and verifier on opus. Both slices live in blueprint-go (../blueprint-go-non-ddd, feat/non-ddd-framework) and are committed there; this record stays in rastrillo-starter. All 11 slices are now `passes: true`. Fix rounds: none.
+
+- Slice 10 (blueprint-go 61cecff): FrameworkDDD/FrameworkNonDDD, nonDDDRules (exactly the eight edges), IsAllowedEdge and AllowedEdgeKinds take the framework first, unknown is ddd (D27). The contract fixture design/testdata/myapp-graph.json is byte-identical to the starter's make blueprint output (the verifier regenerated it); it covers 6 of the 8 non-ddd edges.
+- Slice 11 (blueprint-go 93832c8): reality.Framework, wired by root into design's Deps; propose, the batch refusal message and the view's legalKinds use the session's framework; instructions.txt gains the non-ddd grammar; nothing under apps/server/island changed. AGENTS.md and CONTEXT-design.md reworded (D28 closed). Follow-ups in D30: Framework reads the whole reality row on every view and propose; a swallowed database error.
+
+Gates run: `make -C apps/server ci` in blueprint-go, exit 0, on both slices (vet, staticcheck, govulncheck, budgets, tests, perf, migration check, contexts, flow-check, island-check, steward-checks). That gate has no ci-gate summary; its gitleaks target scanned nothing (not the repository root), a SKIP in substance, and blueprint-go's root `make ci` was not run. Nothing is pushed: the owner's brief said not to push.
