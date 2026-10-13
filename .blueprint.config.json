@@ -1,0 +1,6 @@
+{
+  "framework": "non-ddd",
+  "designTooling": {
+    "extract": "make blueprint"
+  }
+}

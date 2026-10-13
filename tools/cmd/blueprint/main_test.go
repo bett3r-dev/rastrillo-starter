@@ -11,8 +11,10 @@ import (
 	"testing"
 )
 
-// runOver runs the program over root into a fresh directory, as
-// make blueprint does: its exit code, its stderr and the directory.
+// runOver runs the program over root into a fresh temporary
+// directory, as make blueprint-check does (make blueprint writes
+// <root>/.blueprint instead): its exit code, its stderr and the
+// directory.
 func runOver(t *testing.T, root string) (int, string, string) {
 	t.Helper()
 	out := t.TempDir()
@@ -89,7 +91,8 @@ func TestTheGraphGoesUnderTheRootByDefault(t *testing.T) {
 
 // What the graph cannot be drawn without is refused by name, and an
 // unknown flag is a usage error: a framework the graph would otherwise
-// leave empty, a root holding no flow map (a -root pointing at the
+// leave empty, a framework other than non-ddd (whose grammar the
+// diagnostics would not hold the graph to), a root holding no flow map (a -root pointing at the
 // wrong directory), and a hop's rule no invariant in its flow map
 // declares (an invariant node without its context or sentence), and a
 // flow map whose app is not the directory it sits in (meta.app and
@@ -106,6 +109,7 @@ func TestWhatTheGraphNeedsIsRefusedByName(t *testing.T) {
 	}{
 		{"no config", map[string]string{"apps/a/docs/flow.json": flowV2}, nil, 1, ".blueprint.config.json"},
 		{"no framework", map[string]string{".blueprint.config.json": `{}`, "apps/a/docs/flow.json": flowV2}, nil, 1, "names no framework"},
+		{"ddd framework", map[string]string{".blueprint.config.json": `{"framework": "ddd"}`, "apps/a/docs/flow.json": flowV2}, nil, 1, `names framework "ddd": the graph is drawn under non-ddd only`},
 		{"no flow map", map[string]string{".blueprint.config.json": `{"framework": "non-ddd"}`}, nil, 1, "no apps/*/docs/flow.json under"},
 		{"undeclared rule", map[string]string{".blueprint.config.json": `{"framework": "non-ddd"}`, "apps/a/docs/flow.json": `{"version": 2,
 			"policies": [{"from": {"reason": "Paid", "context": "bank"}, "to": {"reason": "Thanked", "context": "notes"},

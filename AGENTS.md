@@ -54,11 +54,14 @@ docs/decisions/  ADRs
 
 ## The gate
 
-`make ci` at the root: every app's own `make ci` (vet, gofmt,
-staticcheck, govulncheck, budgets, tests, the perf lane, the migration
-check, `make contexts`, `make escapes`, `make flow-check`, `make
-oracle` where the app has one, and the browser drive), then `libs`
-and `tools`, then gitleaks once.
+`make ci` at the root: `toolchain-check`, then `libs` and `tools`,
+then every app's own `make ci` (vet, gofmt, staticcheck, govulncheck,
+budgets, tests, the perf lane, the migration check, `make contexts`,
+`make escapes`, `make flow-check`, `make oracle` where the app has
+one, and the browser drive), then `blueprint-check` (the Blueprint
+graph drawn from the committed flow maps into a temporary directory,
+failing on a refused input, edge or name collision), then gitleaks
+once.
 `make -C apps/<app> ci` is one app's gate. While editing:
 `go test -short ./internal/<app>/... ./internal/<app>test/` from the
 app's directory. `CGO_ENABLED=0` throughout. Every Makefile pins the
@@ -168,7 +171,10 @@ Thens. `apps/myapp/oracle` is the pattern.
    Nothing else in them is a rule: unnamed entry points, mixed-context
    requests and implicit crossings are reported, not refused. They
    are the map of what the code does, and `flow.json` (versioned) is
-   what a Blueprint board renders from.
+   what a Blueprint board renders from: `make blueprint` at the root
+   writes `.blueprint/` (ignored) from every committed `flow.json`,
+   running no scenario, and `.blueprint.config.json` names it as
+   Steward's extract command.
 
    A cause counts as a parent only within one request (ADR 0003's
    same-request parent rule, adopted 2026-10-09). A change caused by a

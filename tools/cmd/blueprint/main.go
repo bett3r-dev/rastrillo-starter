@@ -310,6 +310,12 @@ func readConfig(path string) (config, error) {
 	if cfg.Framework == "" {
 		return cfg, fmt.Errorf("%s names no framework", path)
 	}
+	// The diagnostics hold the graph to the non-ddd grammar alone: under
+	// any other framework graph.json would claim a grammar nothing here
+	// checked it against.
+	if cfg.Framework != "non-ddd" {
+		return cfg, fmt.Errorf("%s names framework %q: the graph is drawn under non-ddd only", path, cfg.Framework)
+	}
 	return cfg, nil
 }
 
