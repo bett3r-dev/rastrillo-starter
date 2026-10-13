@@ -207,3 +207,19 @@ sources: [code:tools/cmd/blueprint/repository_test.go:64-70, code:Makefile bluep
 rejected: —
 supersedes: —
 No test pins that the root Makefile has a blueprint target writing under the root (deleting it fails nothing; Steward's extract would break). TestTheRepositorysFlowMapsDrawMyapp expects the whole repository graph to be exactly myapp's nodes, so the first second app with a non-empty flow map fails the root gate; filtering to meta.app == "myapp" would remove the coupling. The blueprint-check recipe's failure on exit 1 has no test (the verifier showed exit 2 on a ddd config and on a collision in clones). framework is top-level in .blueprint.config.json (design.md:25); sibling repos keep designTooling.framework, which Steward does not read. Doc round 1 (doc-wording): AGENTS.md lists the root gate in its real order and points at make blueprint; recheck: skipped (doc round).
+
+## D27 — the framework is IsAllowedEdge's and AllowedEdgeKinds' first argument; the fixture check is stricter than the scenario
+kind: silent-seam
+step: build · slice: 10 · decidedBy: executor
+sources: [code:../blueprint-go-non-ddd/apps/server/internal/server/design/vocabulary.go (grammar, IsAllowedEdge, AllowedEdgeKinds), code:vocabulary_test.go TestStarterGraphFitsTheNonDDDGrammar, design:blueprint-go vocabulary bullet]
+rejected: framework as the last argument — the design fixes no position; first reads as "under this grammar, is from-kind-to allowed"
+supersedes: —
+Any framework but "non-ddd" is ddd (tested with "" and "bpmn"). The contract-fixture test also requires the fixture's framework to be non-ddd, every node type to be in NodeTypes and both ends of each edge to exist; its negative half injects one ddd-only edge and one id that is not NodeKey's and expects exactly those two problems. The verifier regenerated the starter's graph and found the fixture byte-identical (blueprint-go commit 61cecff). Executor: opus, gate scoped, 0 fix rounds.
+
+## D28 — what slice 10 leaves to slice 11, and the gate it did not certify
+kind: shipped-finding
+step: build · slice: 10 · decidedBy: verifier
+sources: [code:../blueprint-go-non-ddd/apps/server/AGENTS.md:589-591, code:CONTEXT-design.md "allowed edge" row, code:view.go:34-37, code:../blueprint-go-non-ddd/apps/server/Makefile:213-217]
+rejected: a doc round in slice 10 — slice 11 changes the same sentences again (the framework comes from the session), so one edit there
+supersedes: —
+apps/server/AGENTS.md still describes one 37-rule grammar: slice 11's touches now include it (an orchestrator edit to .work/slices.yaml), with CONTEXT-design.md's "Every board is ddd for now", which slice 11 makes false. view.go's legalKinds reads rules directly and stays ddd until slice 11. The fixture holds only the 6 edge kinds myapp emits; external-system invokes command and ui invokes command are pinned by each side's exact-set test only (design risk 1). Gate: make -C apps/server ci exit 0 (executor's run); its gitleaks target scans only at the repository root, so it scanned nothing (a SKIP in substance, though it prints no SKIP line), and the root make ci of blueprint-go was not run.
