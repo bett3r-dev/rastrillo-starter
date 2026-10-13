@@ -82,39 +82,41 @@ slices:
   - id: 7
     name: "The welcome note carries EveryNewMemberIsWelcomed, and /changes shows the rule"
     origin: plan
-    mode: null
-    modeReason: null
-    commit: null
-    passed: false
-    attempts: 0
+    mode: sequential
+    modeReason: pool=0
+    commit: 69e7649
+    passed: true
+    attempts: 1
     fixRounds: []
-    verifier: null
-    redBeforeGreen: null
-    postDesignDecisions: []
+    verifier: pass
+    redBeforeGreen: true
+    postDesignDecisions: [D22]
   - id: 8
     name: "flow.json v2: rules, invariants, writes and sources"
     origin: plan
-    mode: null
-    modeReason: null
-    commit: null
-    passed: false
-    attempts: 0
-    fixRounds: []
-    verifier: null
-    redBeforeGreen: null
-    postDesignDecisions: []
+    mode: sequential
+    modeReason: pool=0
+    commit: fe8e690
+    passed: true
+    attempts: 2
+    fixRounds:
+      - { cause: doc-wording, executor: fresh }
+    verifier: pass
+    redBeforeGreen: true
+    postDesignDecisions: [D23, D24]
   - id: 9
     name: "make blueprint over the repository's committed flow maps, gated in make ci"
     origin: plan
-    mode: null
-    modeReason: null
-    commit: null
-    passed: false
-    attempts: 0
-    fixRounds: []
-    verifier: null
-    redBeforeGreen: null
-    postDesignDecisions: []
+    mode: sequential
+    modeReason: pool=0
+    commit: 70405ac
+    passed: true
+    attempts: 2
+    fixRounds:
+      - { cause: doc-wording, executor: fresh }
+    verifier: pass
+    redBeforeGreen: true
+    postDesignDecisions: [D25, D26]
   - id: 10
     name: "blueprint-go: the edge grammar by framework, held to the starter's graph by a contract fixture"
     origin: plan
@@ -157,3 +159,11 @@ Second /build invocation, attended, in the primary checkout (the owner's brief: 
 - Slice 3: diagnostics.json, atomic writes, exit 1 only on violations and collisions. Open: refuse a framework other than non-ddd (D21).
 
 Gates run: `make -C apps/myapp ci` showed 12 ran and 2 SKIPPED (gitleaks: not the repository root; browser: no Chromium), which is not a pass. `make shared` passed on libs and tools. Root `make ci` has still not run on the branch. Nothing is pushed: the owner's brief said not to push.
+
+Third /build invocation, attended, in the primary checkout, verify depth full, executor gate scoped, `worktree-pool size` said pool=0 (7→8→9 is a chain), every executor and verifier on opus. It stopped at the slice budget (3) with slices 7, 8 and 9 committed; 10 and 11 remain (blueprint-go, ../blueprint-go-non-ddd), and 10 is ready next. Fix rounds: doc-wording 2 (slice 8: AGENTS.md and ADR 0003 now say flow.json v2's census fails make flow; slice 9: AGENTS.md lists the root gate in its real order), both fresh, both recheck: skipped (doc round) with scope-check check 5 clean.
+
+- Slice 7: the welcome note carries EveryNewMemberIsWelcomed; /changes and /changes.json show `rule`; both Verify call sites take myapp.Invariants and a test runs the verify subcommand (D9 closed); AGENTS.md "Adding an app" lists the invariants (D18 closed). The oracle's vocabulary copy moved in the same commit (D22; scope-check flagged it, adjudicated as a census move).
+- Slice 8: flow.json v2 (rules, app, invariants, writes, sources) with a go/parser source scan and a census that fails make flow on a name with no source (D12 closed). An entry point's source also comes from an assignment to EntryPoint (D23). Gaps left: rules on same-context follow-ups dropped, sort unpinned (D24).
+- Slice 9: make blueprint and blueprint-check (in the root CI list), .blueprint/ ignored, .blueprint.config.json committed; the extractor refuses a framework but non-ddd (D21 closed); D7's comment reworded. Follow-ups in D26 (the repository test assumes myapp is the only app; no test pins the blueprint target).
+
+Gates run: `make -C apps/myapp ci` (slices 7, 8) and root `make ci` (slice 9): "5 ran, 2 skipped; CI: PASS on what ran". The two SKIPs are the myapp gate's gitleaks (not the repository root; the root's gitleaks ran clean over 48 commits) and browser (no Chromium). They are SKIPs, not passes, and slice 9's planned gate "PASS with no SKIP" is not met (D25). blueprint-go has not been touched. Nothing is pushed: the owner's brief said not to push.
