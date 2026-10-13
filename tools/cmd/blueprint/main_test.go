@@ -53,7 +53,7 @@ func TestAV2FlowBecomesItsGraph(t *testing.T) {
 
 // A flow.json from before version 2 lacks what the graph is built
 // from: the program refuses it, naming the app to regenerate, and
-// writes no graph.
+// writes neither file.
 func TestAnOldFlowIsRefused(t *testing.T) {
 	t.Parallel()
 	code, stderr, out := runOver(t, filepath.Join("testdata", "old-flow"))
@@ -63,8 +63,10 @@ func TestAnOldFlowIsRefused(t *testing.T) {
 	if want := "run make flow in apps/old"; !strings.Contains(stderr, want) {
 		t.Errorf("stderr %q, want it to say %q", stderr, want)
 	}
-	if _, err := os.Stat(filepath.Join(out, "graph.json")); !os.IsNotExist(err) {
-		t.Errorf("graph.json written over a refused flow (stat: %v)", err)
+	for _, name := range []string{"graph.json", "diagnostics.json"} {
+		if _, err := os.Stat(filepath.Join(out, name)); !os.IsNotExist(err) {
+			t.Errorf("%s written over a refused flow (stat: %v)", name, err)
+		}
 	}
 }
 
@@ -89,7 +91,9 @@ func TestTheGraphGoesUnderTheRootByDefault(t *testing.T) {
 // unknown flag is a usage error: a framework the graph would otherwise
 // leave empty, a root holding no flow map (a -root pointing at the
 // wrong directory), and a hop's rule no invariant in its flow map
-// declares (an invariant node without its context or sentence).
+// declares (an invariant node without its context or sentence), and a
+// flow map whose app is not the directory it sits in (meta.app and
+// every site name the directory).
 func TestWhatTheGraphNeedsIsRefusedByName(t *testing.T) {
 	t.Parallel()
 	flowV2 := `{"version": 2, "entry_points": []}`
@@ -106,6 +110,8 @@ func TestWhatTheGraphNeedsIsRefusedByName(t *testing.T) {
 		{"undeclared rule", map[string]string{".blueprint.config.json": `{"framework": "non-ddd"}`, "apps/a/docs/flow.json": `{"version": 2,
 			"policies": [{"from": {"reason": "Paid", "context": "bank"}, "to": {"reason": "Thanked", "context": "notes"},
 				"rules": [{"reason": "Thanked", "rule": "Nobody"}]}]}`}, nil, 1, "rule Nobody on Thanked names no declared invariant"},
+		{"app elsewhere", map[string]string{".blueprint.config.json": `{"framework": "non-ddd"}`,
+			"apps/a/docs/flow.json": `{"version": 2, "app": "b"}`}, nil, 1, "apps/a/docs/flow.json is app b's flow map"},
 		{"unknown flag", nil, []string{"-nope"}, 2, "flag provided but not defined"},
 	} {
 		t.Run(c.name, func(t *testing.T) {

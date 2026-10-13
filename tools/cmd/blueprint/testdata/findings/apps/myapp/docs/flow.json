@@ -1,0 +1,115 @@
+{
+  "version": 2,
+  "app": "myapp",
+  "entry_points": [
+    {
+      "name": "Join",
+      "context": "accounts",
+      "reasons": [
+        "MemberJoined"
+      ],
+      "actors": [
+        "human"
+      ],
+      "rules": []
+    },
+    {
+      "name": "Join",
+      "context": "notes",
+      "reasons": [
+        "WelcomeNoteWritten"
+      ],
+      "actors": [
+        "human"
+      ],
+      "rules": []
+    },
+    {
+      "name": "Pay",
+      "context": "bank",
+      "reasons": [
+        "Paid"
+      ],
+      "actors": [
+        "member"
+      ],
+      "rules": []
+    }
+  ],
+  "unnamed": [
+    {
+      "name": "POST /members/{id}/leave",
+      "context": "accounts",
+      "reasons": [
+        "MemberLeft"
+      ],
+      "actors": [
+        "member"
+      ]
+    }
+  ],
+  "policies": [],
+  "chains": [],
+  "empty": [
+    {
+      "scenario": "TestScenarioAnAgentWrites",
+      "change_id": 3,
+      "event": {
+        "reason": "NoteWritten",
+        "context": "notes"
+      }
+    }
+  ],
+  "mixed": [
+    {
+      "scenario": "TestScenarioJoining",
+      "entry_point": "Join",
+      "contexts": [
+        {
+          "name": "Join",
+          "context": "accounts",
+          "reasons": [
+            "MemberJoined"
+          ],
+          "actors": []
+        },
+        {
+          "name": "Join",
+          "context": "notes",
+          "reasons": [
+            "WelcomeNoteWritten"
+          ],
+          "actors": []
+        }
+      ]
+    }
+  ],
+  "implicit_crossings": [
+    {
+      "scenario": "TestScenarioPaying",
+      "change_id": 7,
+      "event": {
+        "reason": "NoteWritten",
+        "context": "notes"
+      },
+      "entry_point": "Pay",
+      "home": "bank"
+    }
+  ],
+  "invariants": [
+    {
+      "name": "NobodyIsTurnedAway",
+      "context": "accounts",
+      "rule": "Everyone who signs up joins.",
+      "guards": [],
+      "shapes": {}
+    }
+  ],
+  "writes": [],
+  "sources": {
+    "entry_points": {},
+    "reasons": {},
+    "tables": {},
+    "invariants": {}
+  }
+}

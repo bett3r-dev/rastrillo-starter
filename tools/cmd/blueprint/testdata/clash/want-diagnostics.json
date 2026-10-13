@@ -1,0 +1,29 @@
+{
+  "unresolvedEdges": [],
+  "dynamicNameSites": [],
+  "nameCollisions": [
+    {
+      "name": "accounts",
+      "type": "subdomain",
+      "sites": [
+        {
+          "file": "apps/a/docs/flow.json",
+          "line": 1
+        },
+        {
+          "file": "apps/b/docs/flow.json",
+          "line": 1
+        }
+      ]
+    }
+  ],
+  "leafResourceLabelCollisions": [],
+  "orphanNodes": [],
+  "topologyViolations": [],
+  "staleOverrides": [],
+  "opaqueAccessSites": [],
+  "unnamedEntryPoints": [],
+  "emptyEntryPoints": [],
+  "mixedContextRequests": [],
+  "implicitCrossings": []
+}

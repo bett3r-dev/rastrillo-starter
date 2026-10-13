@@ -18,8 +18,15 @@
 // from, kind, to, pretty-printed with a trailing newline and no
 // timestamp, so the same flow maps write the same bytes.
 //
+// Beside it, <out>/diagnostics.json (diagnostics.go): each edge the
+// non-ddd grammar refuses (left out of the graph), each context two
+// apps declare and each id two names give, each node with no edge, and
+// the flow maps' findings. Both files are written atomically. The run
+// exits 1 on a refused edge or a collision, never on the rest.
+//
 // A flow.json older than version 2 lacks what the graph is built
-// from: it is refused, naming the app to run make flow in.
+// from: it is refused, naming the app to run make flow in, as a flow
+// map in another app's directory is. A refused input writes no file.
 package main
 
 import (
@@ -44,22 +51,19 @@ func run(args []string, _, stderr io.Writer) int {
 	fs := flag.NewFlagSet("blueprint", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	root := fs.String("root", ".", "the repository root: .blueprint.config.json and apps/*/docs/flow.json")
-	out := fs.String("out", "", "where graph.json goes (default <root>/.blueprint)")
+	out := fs.String("out", "", "where graph.json and diagnostics.json go (default <root>/.blueprint)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if *out == "" {
 		*out = filepath.Join(*root, ".blueprint")
 	}
-	g, err := extract(*root)
-	if err == nil {
-		err = write(filepath.Join(*out, "graph.json"), g)
-	}
+	g, d, err := extract(*root)
 	if err != nil {
 		fmt.Fprintln(stderr, "blueprint:", err)
 		return 1
 	}
-	return 0
+	return report(*out, g, d, stderr)
 }
 
 type config struct {
@@ -69,11 +73,33 @@ type config struct {
 // flow is the part of a flow.json the graph reads.
 type flow struct {
 	Version     int         `json:"version"`
+	App         string      `json:"app"`
 	EntryPoints []entry     `json:"entry_points"`
 	Policies    []policy    `json:"policies"`
 	Invariants  []invariant `json:"invariants"`
 	Writes      []writes    `json:"writes"`
 	Sources     sources     `json:"sources"`
+	// The flow map's findings, carried into diagnostics.json.
+	Unnamed           []entry        `json:"unnamed"`
+	Empty             []emptyFinding `json:"empty"`
+	ImplicitCrossings []crossFinding `json:"implicit_crossings"`
+}
+
+// emptyFinding is a change no entry point opened.
+type emptyFinding struct {
+	Scenario string `json:"scenario"`
+	ChangeID int64  `json:"change_id"`
+	Event    fact   `json:"event"`
+}
+
+// crossFinding is a change outside its entry point's home context that
+// no policy reached.
+type crossFinding struct {
+	Scenario   string `json:"scenario"`
+	ChangeID   int64  `json:"change_id"`
+	Event      fact   `json:"event"`
+	EntryPoint string `json:"entry_point"`
+	Home       string `json:"home"`
 }
 
 type entry struct {
@@ -167,31 +193,36 @@ type edge struct {
 	Kind string `json:"kind"`
 }
 
-// extract builds the graph of every app under root.
-func extract(root string) (graph, error) {
+// extract builds the graph of every app under root, and the
+// diagnostics read off the flow maps: each app's flow findings and the
+// name collisions across them. report adds the rest.
+func extract(root string) (graph, diagnostics, error) {
+	d := newDiagnostics()
 	cfg, err := readConfig(filepath.Join(root, ".blueprint.config.json"))
 	if err != nil {
-		return graph{}, err
+		return graph{}, d, err
 	}
 	paths, err := filepath.Glob(filepath.Join(root, "apps", "*", "docs", "flow.json"))
 	if err != nil {
-		return graph{}, err
+		return graph{}, d, err
 	}
 	if len(paths) == 0 {
-		return graph{}, fmt.Errorf("no apps/*/docs/flow.json under %s", root)
+		return graph{}, d, fmt.Errorf("no apps/*/docs/flow.json under %s", root)
 	}
-	b := builder{byID: map[string]*node{}, seenEdge: map[edge]bool{}}
+	b := builder{byID: map[string]*node{}, seenEdge: map[edge]bool{}, names: map[string][]claim{}, apps: map[string][]string{}}
 	for _, p := range paths {
 		app := filepath.Base(filepath.Dir(filepath.Dir(p)))
 		f, err := readFlow(p, app)
 		if err != nil {
-			return graph{}, err
+			return graph{}, d, err
 		}
 		if err := b.app(app, f); err != nil {
-			return graph{}, err
+			return graph{}, d, err
 		}
+		d.findings(app, f)
 	}
-	return b.graph(cfg.Framework), nil
+	d.NameCollisions = b.collisions()
+	return b.graph(cfg.Framework), d, nil
 }
 
 // app adds one app's flow map to the graph: a command per (entry point,
@@ -294,6 +325,9 @@ func readFlow(path, app string) (flow, error) {
 	if f.Version < flowVersion {
 		return f, fmt.Errorf("%s is version %d, the graph needs %d: run make flow in apps/%s", path, f.Version, flowVersion, app)
 	}
+	if f.App != "" && f.App != app {
+		return f, fmt.Errorf("apps/%s/docs/flow.json is app %s's flow map: run make flow in apps/%s", app, f.App, app)
+	}
 	return f, nil
 }
 
@@ -301,12 +335,31 @@ type builder struct {
 	byID     map[string]*node
 	edges    []edge
 	seenEdge map[edge]bool
+	// names is each id's distinct names, first found first: an id two
+	// names give is a collision.
+	names map[string][]claim
+	// apps is each context's apps, in the order they were read: a
+	// context two apps declare is a collision.
+	apps map[string][]string
+}
+
+// claim is a name an app gave an id, and where it is declared.
+type claim struct {
+	app, name string
+	src       *source
 }
 
 // node adds the node of that type and name in a context, once however
-// many entry points land it, and returns its id.
+// many entry points land it, and returns its id. It notes the context's
+// app and, when it differs from the id's earlier ones, the name.
 func (b *builder) node(app, context, typ, name string, src *source) string {
 	id := NodeKey(context, typ, name)
+	if !slices.Contains(b.apps[context], app) {
+		b.apps[context] = append(b.apps[context], app)
+	}
+	if !slices.ContainsFunc(b.names[id], func(c claim) bool { return c.name == name }) {
+		b.names[id] = append(b.names[id], claim{app: app, name: name, src: src})
+	}
 	if b.byID[id] == nil {
 		b.byID[id] = &node{ID: id, Type: typ, Label: capitalCase(name), Subdomain: context,
 			Meta: meta{App: app, RuntimeName: name, Source: src}}
@@ -361,13 +414,30 @@ func capitalCase(name string) string {
 	return strings.Join(words, " ")
 }
 
-func write(path string, g graph) error {
-	data, err := json.MarshalIndent(g, "", "  ")
+// write writes v to path as pretty JSON with a trailing newline,
+// atomically: a temporary sibling, renamed over path once whole.
+func write(path string, v any) error {
+	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name()) // a no-op once renamed
+	_, err = tmp.Write(append(data, '\n'))
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Chmod(tmp.Name(), 0o644)
+	}
+	if err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }

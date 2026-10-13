@@ -1,0 +1,14 @@
+{
+  "unresolvedEdges": [],
+  "dynamicNameSites": [],
+  "nameCollisions": [],
+  "leafResourceLabelCollisions": [],
+  "orphanNodes": [],
+  "topologyViolations": [],
+  "staleOverrides": [],
+  "opaqueAccessSites": [],
+  "unnamedEntryPoints": [],
+  "emptyEntryPoints": [],
+  "mixedContextRequests": [],
+  "implicitCrossings": []
+}
