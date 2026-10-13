@@ -175,3 +175,19 @@ sources: [code:apps/myapp/oracle/vocabulary_test.go:98, AGENTS.md "The oracle", 
 rejected: a follow-up commit for the oracle — the oracle's vocabulary test fails on any invariant its copy lacks, so the slice's gate would be red without it
 supersedes: —
 scope-check reported CONTAMINATED by this one file; the orchestrator adjudicated it as a census the slice moves (the oracle keeps its own copy of the vocabulary, held to the app's by a test), and the verifier accepted it. The black-box oracle still does not assert `rule` through /changes.json (design's unspecified seams); the rule sentence's wording is pinned by nothing until flow.json v2 (slice 8) carries it and flow-check holds it. The probe (dropping .By) fires at sign-up (422, ErrRuleRequired) rather than at the rule-value assertion, whose RED was shown separately. Gate SKIPs: gitleaks (not repo root) and browser (no chromium).
+
+## D23 — an entry point's source is also an assignment to a field named EntryPoint; the first match by file path then position wins
+kind: deviation
+step: build · slice: 8 · decidedBy: executor
+sources: [code:locate (apps/myapp/internal/myapptest/flow_test.go), code:createMember t.EntryPoint = "Join" (apps/myapp/internal/myapp/handlers.go:103), code:a.render(..., "Join", ...) (handlers.go:138), design:risk 5]
+rejected: the design's "first call anywhere whose string-literal argument equals it" alone — it points Join at a page title, the wrong jump risk 5 names
+supersedes: —
+Join resolves correctly only because line 103 precedes line 138 in the same file: a "Join" literal in a call earlier in path order (cmd/, say) would still win. A composite literal EntryPoint: "X" is not matched. An invariant's declaration is its Rule<Name> constant in reasons_<context>.go, the same scan as reasons; invariants[].source is copied from sources.invariants (D12).
+
+## D24 — what flow.json v2 leaves out or leaves unpinned
+kind: shipped-finding
+step: build · slice: 8 · decidedBy: verifier
+sources: [code:flowOf (apps/myapp/internal/myapptest/flow_test.go:308-325), code:census, decisions:D20]
+rejected: —
+supersedes: —
+A rule on a same-context follow-up change, or on a change with no entry point, is dropped from the map (the extractor's continue), so an invariant shaping only such a change reaches the board as an orphan; no myapp case does this. mixed[].contexts[].rules is always []. The census covers named entry points (not unnamed), every declared reason, every table some reason writes and every declared invariant. The sorting of invariants, guards and shape tables, and the scan's restriction to reasons_* files, are pinned by no test (myapp's declarations are already in order). flowGate's census-error branch has no unit test. Doc round 1 (doc-wording): AGENTS.md now says make flow and flow-check fail on a name with no source; ADR 0003 gains the v2 fields; recheck: skipped (doc round). Gate SKIPs: gitleaks (not repo root), browser (no chromium).
