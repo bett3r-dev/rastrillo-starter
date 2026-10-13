@@ -18,27 +18,29 @@ slices:
   - id: 2
     name: "The full mapping: policies, invariants, tables, agents and every non-ddd edge"
     origin: plan
-    mode: null
-    modeReason: null
-    commit: null
-    passed: false
-    attempts: 0
-    fixRounds: []
-    verifier: null
-    redBeforeGreen: null
-    postDesignDecisions: []
+    mode: sequential
+    modeReason: owner-brief-no-worktree
+    commit: ec36e8b
+    passed: true
+    attempts: 2
+    fixRounds:
+      - { cause: oracle-wrong, executor: fresh }
+    verifier: pass
+    redBeforeGreen: true
+    postDesignDecisions: [D11, D12, D13, D14]
   - id: 3
     name: "Diagnostics: the non-ddd grammar, collisions and orphans; exit 1 only on violations and collisions"
     origin: plan
-    mode: null
-    modeReason: null
-    commit: null
-    passed: false
-    attempts: 0
-    fixRounds: []
-    verifier: null
-    redBeforeGreen: null
-    postDesignDecisions: []
+    mode: sequential
+    modeReason: owner-brief-no-worktree
+    commit: 230a9da
+    passed: true
+    attempts: 2
+    fixRounds:
+      - { cause: doc-wording, executor: fresh }
+    verifier: pass
+    redBeforeGreen: true
+    postDesignDecisions: [D19, D20, D21]
   - id: 4
     name: "A change carries the rule that shaped it; a shaped write without it, or with the wrong one, is refused"
     origin: plan
@@ -67,15 +69,16 @@ slices:
   - id: 6
     name: "An unchanged correction is refused by ACorrectionChangesSomething"
     origin: plan
-    mode: null
-    modeReason: null
-    commit: null
-    passed: false
-    attempts: 0
-    fixRounds: []
-    verifier: null
-    redBeforeGreen: null
-    postDesignDecisions: []
+    mode: sequential
+    modeReason: owner-brief-no-worktree
+    commit: 1a01ffb
+    passed: true
+    attempts: 2
+    fixRounds:
+      - { cause: invariant, executor: fresh }
+    verifier: pass
+    redBeforeGreen: true
+    postDesignDecisions: [D15, D16, D17, D18]
   - id: 7
     name: "The welcome note carries EveryNewMemberIsWelcomed, and /changes shows the rule"
     origin: plan
@@ -146,3 +149,11 @@ First /build invocation, attended, verify depth full, executor gate scoped, work
 - Slice 5: `changes.Verify` takes the invariants. Fix round 1 (`invariant`, continued) corrected the cutoff for a database that has not run 0005 (D8, design risk 4): round 0 would have failed verify on every tenant still at 0004.
 
 For later slices: Verify's two myapp call sites still pass nil invariants, and slice 7 now carries the wiring plus a test that runs the verify subcommand (D9). Two [doc] rewordings are owed: the tools/cmd/blueprint main_test.go runOver comment (carried on slice 9, D7) and the TestVerifyWithoutALedgerHoldsEveryRecord name (D10). The pool worktrees' provisioner agents ran `worktree-pool reset` from inside the detached worktree and were refused (checkout-is-detached-no-task-branch); running the reset from the main checkout worked. Every myapp `make ci` in a pool worktree ran 12 targets with 2 SKIPs (gitleaks: not the repository root; browser: no Chromium), so those are SKIPs, not passes. Root `make ci` has not been run on the branch.
+
+Second /build invocation, attended, in the primary checkout (the owner's brief: no new worktree, so every slice ran sequentially although `worktree-pool size` said pool=2; modeReason `owner-brief-no-worktree`), verify depth full, executor gate scoped, every executor and verifier on opus. It stopped at the slice budget (3) with slices 2, 6 and 3 committed; 7-11 remain, and 7 (after 6) is ready next. Fix rounds: oracle-wrong 1 (slice 2: the shapes clause of a command's guard was unpinned), invariant 1 (slice 6: Join's Trail bypassed Policy.Begin), doc-wording 1 (slice 3: two comments overclaimed; recheck: skipped (doc round), scope-check check 5 clean). All fresh, none continued.
+
+- Slice 2: the full non-ddd mapping. Agent nodes are per (agent, context) (D11). A sourceless node gets no meta.source (D12; slice 8's census owns it, D21).
+- Slice 6: `(*Trail).Refuse`, `Policy.Begin`/`Policy.Logger`, the first invariant ACorrectionChangesSomething, refusedBy, and invariants_test.go. libs/changes imports `testing` for testing.Testing (D16). The log field is `correlation`, not design.md:205's `trace_id` (D17, design sentence owed a fix). AGENTS.md "Adding an app" owes the invariants step, in slice 7 (D18).
+- Slice 3: diagnostics.json, atomic writes, exit 1 only on violations and collisions. Open: refuse a framework other than non-ddd (D21).
+
+Gates run: `make -C apps/myapp ci` showed 12 ran and 2 SKIPPED (gitleaks: not the repository root; browser: no Chromium), which is not a pass. `make shared` passed on libs and tools. Root `make ci` has still not run on the branch. Nothing is pushed: the owner's brief said not to push.
