@@ -1,0 +1,778 @@
+{
+  "structureVersion": 2,
+  "shape": "decision",
+  "grounded": true,
+  "mapId": "RS-20",
+  "target": "artifact",
+  "nodes": [
+    {
+      "id": "RS-20-goal",
+      "level": "goal",
+      "title": "A rastrillo repository hands Blueprint a graph that says what its code does (command, invariant, context, event, policy across contexts, event), and Blueprint accepts it as framework non-ddd",
+      "parents": []
+    },
+    {
+      "id": "RS-20-d-inv",
+      "level": "deliverable",
+      "title": "Named invariants in the starter, in RUS-83's shape (rule on the change, refuse, data-rule, verify, binding test)",
+      "parents": [
+        "RS-20-goal"
+      ]
+    },
+    {
+      "id": "RS-20-d-starter",
+      "level": "deliverable",
+      "title": "make blueprint: .blueprint/graph.json and diagnostics.json from every app's committed flow.json v2",
+      "parents": [
+        "RS-20-goal"
+      ]
+    },
+    {
+      "id": "RS-20-d-bpgo",
+      "level": "deliverable",
+      "title": "blueprint-go validates proposals and serves legalKinds by the session's framework (ddd | non-ddd)",
+      "parents": [
+        "RS-20-goal"
+      ]
+    }
+  ],
+  "forks": [
+    {
+      "id": "RS-20-F1",
+      "title": "Extraction source: run the scenarios at extract time, or build from the committed flow.json",
+      "tickets": [
+        "RS-20"
+      ],
+      "anchor": "RS-20-d-starter",
+      "restsOn": [],
+      "status": {
+        "kind": "decided",
+        "source": "owner",
+        "option": "1"
+      },
+      "card": {
+        "problem": "Steward runs designTooling.extract before every design job; the graph needs what the scenarios land, which flow.json already holds, drift-checked.",
+        "useCases": [
+          "A designer opens a session on a repo; Steward extracts before the job"
+        ],
+        "options": [
+          {
+            "id": "1",
+            "label": "Build from committed apps/*/docs/flow.json v2 with a root tool",
+            "walks": [
+              {
+                "scenario": "extract",
+                "text": "Sub-second, no Go test run",
+                "kind": "behavioral",
+                "given": "myapp's committed flow.json v2 at HEAD",
+                "when": "Steward runs make blueprint",
+                "then": "the root .blueprint/graph.json is written from flow.json alone, without running any scenario"
+              }
+            ]
+          },
+          {
+            "id": "2",
+            "label": "Run every app's scenarios at extract time",
+            "walks": [
+              {
+                "scenario": "extract",
+                "text": "Whole suite per design job",
+                "kind": "behavioral",
+                "given": "myapp at HEAD",
+                "when": "Steward runs make blueprint",
+                "then": "the scenarios run and .blueprint/ reflects the working tree, dirty or not"
+              }
+            ]
+          }
+        ],
+        "recommendation": {
+          "option": "1",
+          "why": "flow.json is already the drift-checked map a Blueprint board renders from (AGENTS.md); extraction stays cheap and matches the pushed commit."
+        },
+        "ifOverturned": "Extraction would cost a whole scenario suite on every design job."
+      }
+    },
+    {
+      "id": "RS-20-F2",
+      "title": "Monorepo merge: one graph per repository against several apps",
+      "tickets": [
+        "RS-20"
+      ],
+      "anchor": "RS-20-d-starter",
+      "restsOn": [],
+      "status": {
+        "kind": "decided",
+        "source": "owner",
+        "option": "1"
+      },
+      "card": {
+        "problem": "Blueprint keeps one .blueprint/graph.json per repository; the starter can hold several apps.",
+        "useCases": [
+          "Two apps both declaring an accounts context"
+        ],
+        "options": [
+          {
+            "id": "1",
+            "label": "Merge every app; subdomain = context; a clash is a nameCollisions entry",
+            "walks": [
+              {
+                "scenario": "clash",
+                "text": "Ambiguity surfaced",
+                "kind": "behavioral",
+                "given": "apps a and b both declare context accounts",
+                "when": "make blueprint runs",
+                "then": "diagnostics.json lists accounts under nameCollisions and make blueprint exits non-zero"
+              }
+            ]
+          },
+          {
+            "id": "2",
+            "label": "Merge; subdomain = <app>-<context>",
+            "walks": [
+              {
+                "scenario": "clash",
+                "text": "No clash possible, app in every id",
+                "kind": "behavioral",
+                "given": "as above",
+                "when": "make blueprint runs",
+                "then": "two subdomains a-accounts and b-accounts"
+              }
+            ]
+          },
+          {
+            "id": "3",
+            "label": "One graph per app (Steward change)",
+            "walks": [
+              {
+                "scenario": "clash",
+                "text": "Steward must learn per-app paths",
+                "kind": "behavioral",
+                "given": "as above",
+                "when": "Steward extracts",
+                "then": "fails until Steward reads apps/<app>/.blueprint"
+              }
+            ]
+          }
+        ],
+        "recommendation": {
+          "option": "1",
+          "why": "A context name is the business's word, unique across apps that talk over HTTP."
+        },
+        "ifOverturned": "Ids would carry app names, or Steward needs a change."
+      }
+    },
+    {
+      "id": "RS-20-F3",
+      "title": "Mixed-context entry point: which subdomain its command node gets",
+      "tickets": [
+        "RS-20"
+      ],
+      "anchor": "RS-20-d-starter",
+      "restsOn": [],
+      "status": {
+        "kind": "decided",
+        "source": "owner",
+        "option": "1"
+      },
+      "card": {
+        "problem": "A command node has one subdomain; one request may land directly in two contexts.",
+        "useCases": [
+          "Join landing MemberJoined[accounts] and WelcomeNoteWritten[notes] directly, uncaused"
+        ],
+        "options": [
+          {
+            "id": "1",
+            "label": "One command node per (entry point, context), plus a mixedContextRequests diagnostic",
+            "walks": [
+              {
+                "scenario": "mixed",
+                "text": "Two boxes, the smell visible",
+                "kind": "behavioral",
+                "given": "a flow.json entry_points list with Join in accounts and Join in notes",
+                "when": "make blueprint runs",
+                "then": "graph has accounts_cmd_join and notes_cmd_join, and diagnostics.mixedContextRequests names Join"
+              }
+            ]
+          },
+          {
+            "id": "2",
+            "label": "One node in the context with most facts",
+            "walks": [
+              {
+                "scenario": "mixed",
+                "text": "Foreign event under a command",
+                "kind": "behavioral",
+                "given": "as above",
+                "when": "make blueprint runs",
+                "then": "one accounts_cmd_join producing a notes event"
+              }
+            ]
+          },
+          {
+            "id": "3",
+            "label": "A synthetic mixed subdomain",
+            "walks": [
+              {
+                "scenario": "mixed",
+                "text": "A context nobody declared",
+                "kind": "behavioral",
+                "given": "as above",
+                "when": "make blueprint runs",
+                "then": "mixed_cmd_join"
+              }
+            ]
+          }
+        ],
+        "recommendation": {
+          "option": "1",
+          "why": "It mirrors flow.json's per-context entry_points and draws the smell instead of hiding it."
+        },
+        "ifOverturned": "The board would hide a mixed request."
+      }
+    },
+    {
+      "id": "RS-20-F4",
+      "title": "Policy node label",
+      "tickets": [
+        "RS-20"
+      ],
+      "anchor": "RS-20-d-starter",
+      "restsOn": [],
+      "status": {
+        "kind": "decided",
+        "source": "owner",
+        "option": "1"
+      },
+      "card": {
+        "problem": "Change records do not carry the policy's name; the Go function name is in no record.",
+        "useCases": [
+          "MemberJoined[accounts] ⟹ WelcomeNoteWritten[notes]"
+        ],
+        "options": [
+          {
+            "id": "1",
+            "label": "{From}Then{To} in the target context",
+            "walks": [
+              {
+                "scenario": "welcome",
+                "text": "Pure function of the record",
+                "kind": "behavioral",
+                "given": "myapp's flow.json policy MemberJoined[accounts] to WelcomeNoteWritten[notes]",
+                "when": "make blueprint runs",
+                "then": "graph has node notes_pol_member-joined-then-welcome-note-written with triggers from accounts_evt_member-joined and produces to notes_evt_welcome-note-written"
+              }
+            ]
+          },
+          {
+            "id": "2",
+            "label": "Declared policy names beside the reasons, held by a binding test",
+            "walks": [
+              {
+                "scenario": "welcome",
+                "text": "Better words, one more declaration",
+                "kind": "behavioral",
+                "given": "notes declares policy Welcome",
+                "when": "make blueprint runs",
+                "then": "notes_pol_welcome"
+              }
+            ]
+          },
+          {
+            "id": "3",
+            "label": "A policy column on the record",
+            "walks": [
+              {
+                "scenario": "welcome",
+                "text": "Contract change",
+                "kind": "behavioral",
+                "given": "a Trail option Policy(\"Welcome\")",
+                "when": "make blueprint runs",
+                "then": "notes_pol_welcome from the record"
+              }
+            ]
+          }
+        ],
+        "recommendation": {
+          "option": "1",
+          "why": "No code change; option 2 can replace it later (renaming ids)."
+        },
+        "ifOverturned": "Policy ids would differ from day one."
+      }
+    },
+    {
+      "id": "RS-20-F5",
+      "title": "Diagnostics: which are emitted and which fail make ci",
+      "tickets": [
+        "RS-20"
+      ],
+      "anchor": "RS-20-d-starter",
+      "restsOn": [],
+      "status": {
+        "kind": "decided",
+        "source": "owner",
+        "option": "1"
+      },
+      "card": {
+        "problem": "ADR 0003 says the map never fails on what it finds; pv3's CLI exits 1 on topology violations and collisions.",
+        "useCases": [
+          "An extractor bug emits an illegal edge; an invariant no command guards"
+        ],
+        "options": [
+          {
+            "id": "1",
+            "label": "Fail on topologyViolations and nameCollisions only; report orphans and flow findings as extra keys",
+            "walks": [
+              {
+                "scenario": "illegal edge",
+                "text": "Tool defect fails",
+                "kind": "behavioral",
+                "given": "the extractor emits event produces event",
+                "when": "make blueprint runs",
+                "then": "diagnostics.topologyViolations names the edge and make blueprint exits non-zero"
+              },
+              {
+                "scenario": "orphan",
+                "text": "Reported only",
+                "kind": "behavioral",
+                "given": "a declared invariant no command or policy guards",
+                "when": "make blueprint runs",
+                "then": "diagnostics.orphanNodes names it and make blueprint exits zero"
+              }
+            ]
+          },
+          {
+            "id": "2",
+            "label": "Fail on nothing",
+            "walks": [
+              {
+                "scenario": "illegal edge",
+                "text": "Defect ships",
+                "kind": "behavioral",
+                "given": "as above",
+                "when": "make blueprint runs",
+                "then": "exit zero"
+              }
+            ]
+          },
+          {
+            "id": "3",
+            "label": "Fail on orphans too",
+            "walks": [
+              {
+                "scenario": "orphan",
+                "text": "Duplicates the invariant binding test",
+                "kind": "behavioral",
+                "given": "as above",
+                "when": "make blueprint runs",
+                "then": "exit non-zero"
+              }
+            ]
+          }
+        ],
+        "recommendation": {
+          "option": "1",
+          "why": "Enforces only tool defects and cross-app ambiguity; ADR 0003 stays whole."
+        },
+        "ifOverturned": "Either defects ship or ADR 0003 is broken."
+      }
+    },
+    {
+      "id": "RS-20-F6",
+      "title": "Non-ddd grammar extras beyond the four settled edges",
+      "tickets": [
+        "RS-20"
+      ],
+      "anchor": "RS-20-d-bpgo",
+      "restsOn": [],
+      "status": {
+        "kind": "decided",
+        "source": "owner",
+        "option": "1"
+      },
+      "card": {
+        "problem": "Settled: command produces event, command guarded-by invariant, event triggers policy, policy produces event. What else is legal in non-ddd?",
+        "useCases": [
+          "agent:bank opens BankReportedTransaction; NoteWritten writes notes"
+        ],
+        "options": [
+          {
+            "id": "1",
+            "label": "Add external-system invokes command and event writes-to datastore; keep ui invokes command",
+            "walks": [
+              {
+                "scenario": "agent",
+                "text": "Drawn",
+                "kind": "behavioral",
+                "given": "a non-ddd session",
+                "when": "the design agent proposes bank_ext_bank invokes bank_cmd_bank-reported-transaction",
+                "then": "the proposal is accepted"
+              },
+              {
+                "scenario": "table",
+                "text": "Drawn",
+                "kind": "behavioral",
+                "given": "myapp's flow.json declares NoteWritten writes notes",
+                "when": "make blueprint runs",
+                "then": "graph has notes_evt_note-written writes-to notes_tbl_notes"
+              }
+            ]
+          },
+          {
+            "id": "2",
+            "label": "Only external-system invokes command",
+            "walks": [
+              {
+                "scenario": "table",
+                "text": "No datastores",
+                "kind": "behavioral",
+                "given": "as above",
+                "when": "make blueprint runs",
+                "then": "no datastore node"
+              }
+            ]
+          },
+          {
+            "id": "3",
+            "label": "Only the four settled edges",
+            "walks": [
+              {
+                "scenario": "agent",
+                "text": "No agents or tables",
+                "kind": "behavioral",
+                "given": "as above",
+                "when": "proposal",
+                "then": "refused"
+              }
+            ]
+          }
+        ],
+        "recommendation": {
+          "option": "1",
+          "why": "The kept mapping already has tracked table → datastore and agent → external-system; each needs exactly one triple."
+        },
+        "ifOverturned": "Agents and table ownership vanish from the board."
+      }
+    },
+    {
+      "id": "RS-20-F7",
+      "title": "Example invariants the starter ships in myapp",
+      "tickets": [
+        "RS-20"
+      ],
+      "anchor": "RS-20-d-inv",
+      "restsOn": [],
+      "status": {
+        "kind": "decided",
+        "source": "owner",
+        "option": "1"
+      },
+      "card": {
+        "problem": "The starter declares no invariant; the title check is form validation, out of RUS-83's scope.",
+        "useCases": [
+          "A member submits a correction that changes nothing"
+        ],
+        "options": [
+          {
+            "id": "1",
+            "label": "ACorrectionChangesSomething guards NoteCorrected (refuse) and EveryNewMemberIsWelcomed shapes WelcomeNoteWritten:[notes] (By)",
+            "walks": [
+              {
+                "scenario": "unchanged correction",
+                "text": "Named refusal",
+                "kind": "behavioral",
+                "given": "a member's note titled Groceries with body milk",
+                "when": "the member posts the correction with title Groceries and body milk",
+                "then": "422, the page carries data-rule=ACorrectionChangesSomething, no change lands, and one refused log line names the rule, entry point CorrectNote, context notes, actor and trace id"
+              },
+              {
+                "scenario": "join",
+                "text": "Rule on the record",
+                "kind": "behavioral",
+                "given": "no member yet",
+                "when": "Ana signs up",
+                "then": "the WelcomeNoteWritten change carries rule EveryNewMemberIsWelcomed"
+              }
+            ]
+          },
+          {
+            "id": "2",
+            "label": "Only the guard",
+            "walks": [
+              {
+                "scenario": "join",
+                "text": "No shaping example",
+                "kind": "behavioral",
+                "given": "as above",
+                "when": "Ana signs up",
+                "then": "rule is null"
+              }
+            ]
+          },
+          {
+            "id": "3",
+            "label": "None",
+            "walks": [
+              {
+                "scenario": "unchanged correction",
+                "text": "Empty-diff change lands",
+                "kind": "behavioral",
+                "given": "as above",
+                "when": "as above",
+                "then": "a NoteCorrected change lands"
+              }
+            ]
+          }
+        ],
+        "recommendation": {
+          "option": "1",
+          "why": "Exercises both halves of RUS-83's shape through existing scenarios."
+        },
+        "ifOverturned": "The starter teaches half the shape, or none."
+      }
+    },
+    {
+      "id": "RS-20-F8",
+      "title": "How framework travels from the repo to blueprint-go",
+      "tickets": [
+        "RS-20"
+      ],
+      "anchor": "RS-20-d-bpgo",
+      "restsOn": [],
+      "status": {
+        "kind": "decided",
+        "source": "owner",
+        "option": "1"
+      },
+      "card": {
+        "problem": "framework (ddd | non-ddd) lives in .blueprint.config.json; blueprint-go has no repository table.",
+        "useCases": [
+          "Steward pushes myapp's graph, then the agent proposes a policy produces event edge"
+        ],
+        "options": [
+          {
+            "id": "1",
+            "label": "Extractor stamps framework at the top of graph.json; blueprint-go reads the session's latest reality graph, default ddd",
+            "walks": [
+              {
+                "scenario": "non-ddd push",
+                "text": "No Steward change",
+                "kind": "behavioral",
+                "given": "a session whose latest reality graph has framework non-ddd",
+                "when": "the design agent proposes notes_pol_x produces notes_evt_y",
+                "then": "the proposal is accepted and the view's legalKinds lists produces from policy to event"
+              },
+              {
+                "scenario": "pv3 push",
+                "text": "Unchanged",
+                "kind": "behavioral",
+                "given": "a session whose latest reality graph has no framework field",
+                "when": "the agent proposes policy produces event",
+                "then": "refused as EdgeKindNotAllowed, exactly as today"
+              }
+            ]
+          },
+          {
+            "id": "2",
+            "label": "Steward sends framework beside the graph",
+            "walks": [
+              {
+                "scenario": "non-ddd push",
+                "text": "Steward and route contract change",
+                "kind": "behavioral",
+                "given": "as above",
+                "when": "as above",
+                "then": "accepted after both change"
+              }
+            ]
+          },
+          {
+            "id": "3",
+            "label": "A session setting set by hand",
+            "walks": [
+              {
+                "scenario": "non-ddd push",
+                "text": "Can disagree with the repo",
+                "kind": "behavioral",
+                "given": "setting left at ddd",
+                "when": "as above",
+                "then": "refused"
+              }
+            ]
+          }
+        ],
+        "recommendation": {
+          "option": "1",
+          "why": "One source, the repository; zero Steward changes; pv3 graphs stay ddd."
+        },
+        "ifOverturned": "Steward and the reality contract change."
+      }
+    },
+    {
+      "id": "RS-20-F9",
+      "title": "blueprint-go scope: Go side only, or the island too",
+      "tickets": [
+        "RS-20"
+      ],
+      "anchor": "RS-20-d-bpgo",
+      "restsOn": [],
+      "status": {
+        "kind": "decided",
+        "source": "owner",
+        "option": "1"
+      },
+      "card": {
+        "problem": "The island is mid-rewrite in the owner's uncommitted WIP, which uses blueprint-schema's DDD allowedEdgeKinds client-side.",
+        "useCases": [
+          "A non-ddd session draws policy produces event"
+        ],
+        "options": [
+          {
+            "id": "1",
+            "label": "Go side only: grammar by framework, proposal validator, legalKinds by framework, instructions.txt; island deferred",
+            "walks": [
+              {
+                "scenario": "scope",
+                "text": "Every Go-side check of edge legality takes the session's framework; no file under apps/server/island changes in this work.",
+                "kind": "structural"
+              }
+            ]
+          },
+          {
+            "id": "2",
+            "label": "Go side plus island now",
+            "walks": [
+              {
+                "scenario": "scope",
+                "text": "Collides with the owner's 62-file WIP.",
+                "kind": "structural"
+              }
+            ]
+          }
+        ],
+        "recommendation": {
+          "option": "1",
+          "why": "Island work waits until the WIP lands."
+        },
+        "ifOverturned": "Collision with the owner's WIP."
+      }
+    },
+    {
+      "id": "RS-20-F10",
+      "title": ".blueprint/ artifacts: generated or committed",
+      "tickets": [
+        "RS-20"
+      ],
+      "anchor": "RS-20-d-starter",
+      "restsOn": [],
+      "status": {
+        "kind": "decided",
+        "source": "owner",
+        "option": "1"
+      },
+      "card": {
+        "problem": "Commit the graph, or generate it from the committed flow.json?",
+        "useCases": [
+          "The owner runs make blueprint locally"
+        ],
+        "options": [
+          {
+            "id": "1",
+            "label": "Generated and gitignored; .blueprint.config.json committed with designTooling.extract and framework non-ddd",
+            "walks": [
+              {
+                "scenario": "artifacts",
+                "text": ".blueprint/ is in .gitignore; .blueprint.config.json names designTooling.extract = make blueprint and framework = non-ddd.",
+                "kind": "structural"
+              }
+            ]
+          },
+          {
+            "id": "2",
+            "label": "Committed with a drift check",
+            "walks": [
+              {
+                "scenario": "artifacts",
+                "text": "Two drift checks over one fact.",
+                "kind": "structural"
+              }
+            ]
+          }
+        ],
+        "recommendation": {
+          "option": "1",
+          "why": "flow.json is already the committed truth."
+        },
+        "ifOverturned": "Two drift checks over one fact."
+      }
+    },
+    {
+      "id": "RS-20-F11",
+      "title": "Where a shaping rule on a policy-landed event attaches",
+      "tickets": [
+        "RS-20"
+      ],
+      "anchor": "RS-20-d-starter",
+      "restsOn": [],
+      "status": {
+        "kind": "decided",
+        "source": "owner",
+        "option": "1"
+      },
+      "card": {
+        "problem": "EveryNewMemberIsWelcomed shapes WelcomeNoteWritten, which a policy lands, not a command; RUS-83 settled shapes draws guarded-by for commands only.",
+        "useCases": [
+          "Join → MemberJoined[accounts] ⟹ MemberJoinedThenWelcomeNoteWritten → WelcomeNoteWritten[notes], rule EveryNewMemberIsWelcomed"
+        ],
+        "options": [
+          {
+            "id": "1",
+            "label": "Add policy guarded-by invariant to non-ddd",
+            "walks": [
+              {
+                "scenario": "welcome",
+                "text": "Drawn where the rule acted",
+                "kind": "behavioral",
+                "given": "myapp's flow.json with rule EveryNewMemberIsWelcomed on the WelcomeNoteWritten hop",
+                "when": "make blueprint runs",
+                "then": "graph has notes_pol_member-joined-then-welcome-note-written guarded-by notes_inv_every-new-member-is-welcomed and no orphan"
+              }
+            ]
+          },
+          {
+            "id": "2",
+            "label": "Attach to the entry command Join",
+            "walks": [
+              {
+                "scenario": "welcome",
+                "text": "Rule drawn in accounts' flow",
+                "kind": "behavioral",
+                "given": "as above",
+                "when": "make blueprint runs",
+                "then": "accounts_cmd_join guarded-by the notes invariant"
+              }
+            ]
+          },
+          {
+            "id": "3",
+            "label": "No edge, orphan reported",
+            "walks": [
+              {
+                "scenario": "welcome",
+                "text": "Invariant floats",
+                "kind": "behavioral",
+                "given": "as above",
+                "when": "make blueprint runs",
+                "then": "orphanNodes lists it"
+              }
+            ]
+          }
+        ],
+        "recommendation": {
+          "option": "1",
+          "why": "The rule lives in the reacting context and the policy is its only writer."
+        },
+        "ifOverturned": "The invariant floats or sits in the wrong context's flow."
+      }
+    }
+  ]
+}

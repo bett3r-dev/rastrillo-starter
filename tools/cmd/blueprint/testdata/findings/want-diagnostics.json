@@ -1,0 +1,66 @@
+{
+  "unresolvedEdges": [],
+  "dynamicNameSites": [],
+  "nameCollisions": [],
+  "leafResourceLabelCollisions": [],
+  "orphanNodes": [
+    {
+      "id": "accounts_inv_nobody-is-turned-away",
+      "type": "invariant"
+    }
+  ],
+  "topologyViolations": [],
+  "staleOverrides": [],
+  "opaqueAccessSites": [],
+  "unnamedEntryPoints": [
+    {
+      "app": "myapp",
+      "name": "POST /members/{id}/leave",
+      "context": "accounts",
+      "reasons": [
+        "MemberLeft"
+      ],
+      "actors": [
+        "member"
+      ]
+    }
+  ],
+  "emptyEntryPoints": [
+    {
+      "app": "myapp",
+      "scenario": "TestScenarioAnAgentWrites",
+      "changeId": 3,
+      "event": {
+        "reason": "NoteWritten",
+        "context": "notes"
+      }
+    }
+  ],
+  "mixedContextRequests": [
+    {
+      "app": "myapp",
+      "entryPoint": "Join",
+      "contexts": [
+        "accounts",
+        "notes"
+      ],
+      "commands": [
+        "accounts_cmd_join",
+        "notes_cmd_join"
+      ]
+    }
+  ],
+  "implicitCrossings": [
+    {
+      "app": "myapp",
+      "scenario": "TestScenarioPaying",
+      "changeId": 7,
+      "event": {
+        "reason": "NoteWritten",
+        "context": "notes"
+      },
+      "entryPoint": "Pay",
+      "home": "bank"
+    }
+  ]
+}

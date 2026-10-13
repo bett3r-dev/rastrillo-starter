@@ -168,8 +168,9 @@ func tenant() string {
 
 // verify is `myapp verify -db <path>`: fold every tracked row's
 // change records and compare with the row as it is, on a copy of a
-// production database. Prints each disagreement and exits 1 if there
-// is one. The check after the fact for a write that met neither the
+// production database, and hold each change's rule to the declared
+// invariants (myapp.Invariants). Prints each disagreement and exits 1
+// if there is one. The check after the fact for a write that met neither the
 // hook nor the guard trigger.
 func verify(args []string) int {
 	fs := flag.NewFlagSet("verify", flag.ContinueOnError)
@@ -185,7 +186,7 @@ func verify(args []string) int {
 		return 2
 	}
 	defer d.Close()
-	ms, err := changes.Verify(d.G, myapp.Tracked, myapp.TrackedExempt)
+	ms, err := changes.Verify(d.G, myapp.Tracked, myapp.TrackedExempt, myapp.Invariants)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2

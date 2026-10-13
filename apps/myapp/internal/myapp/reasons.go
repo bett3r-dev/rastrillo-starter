@@ -44,6 +44,15 @@ type Writes = changes.Writes
 // holds it to the vocabulary.
 var ReasonWrites = map[string]Writes{}
 
+// Invariant is one business rule a context declares beside its
+// reasons, in reasons_<context>.go.
+type Invariant = changes.Invariant
+
+// Invariants is every context's declared rules, installed as
+// changes.Policy.Invariants: a refusal must name one of them
+// (Trail.Refuse), and a write one shapes must name it (Trail.By).
+var Invariants = slices.Concat(notesInvariants)
+
 var reasonContexts = map[string]string{}
 
 func init() {

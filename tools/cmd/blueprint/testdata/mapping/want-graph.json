@@ -1,0 +1,357 @@
+{
+  "schemaVersion": 1,
+  "framework": "non-ddd",
+  "subdomains": [
+    "accounts",
+    "bank",
+    "notes"
+  ],
+  "nodes": [
+    {
+      "id": "accounts_cmd_join",
+      "type": "command",
+      "label": "Join",
+      "subdomain": "accounts",
+      "meta": {
+        "app": "myapp",
+        "runtimeName": "Join",
+        "source": {
+          "file": "apps/myapp/internal/myapp/handlers.go",
+          "line": 100
+        }
+      }
+    },
+    {
+      "id": "accounts_evt_member-joined",
+      "type": "event",
+      "label": "Member Joined",
+      "subdomain": "accounts",
+      "meta": {
+        "app": "myapp",
+        "runtimeName": "MemberJoined",
+        "source": {
+          "file": "apps/myapp/internal/myapp/reasons_accounts.go",
+          "line": 13
+        }
+      }
+    },
+    {
+      "id": "accounts_tbl_members",
+      "type": "datastore",
+      "label": "Members",
+      "subdomain": "accounts",
+      "meta": {
+        "app": "myapp",
+        "runtimeName": "members",
+        "source": {
+          "file": "apps/myapp/internal/myapp/models.go",
+          "line": 44
+        }
+      }
+    },
+    {
+      "id": "bank_cmd_bank-reported-transaction",
+      "type": "command",
+      "label": "Bank Reported Transaction",
+      "subdomain": "bank",
+      "meta": {
+        "app": "myapp",
+        "runtimeName": "BankReportedTransaction",
+        "source": {
+          "file": "apps/myapp/internal/myapp/handlers.go",
+          "line": 410
+        }
+      }
+    },
+    {
+      "id": "bank_evt_transaction-reported",
+      "type": "event",
+      "label": "Transaction Reported",
+      "subdomain": "bank",
+      "meta": {
+        "app": "myapp",
+        "runtimeName": "TransactionReported",
+        "source": {
+          "file": "apps/myapp/internal/myapp/reasons_bank.go",
+          "line": 12
+        }
+      }
+    },
+    {
+      "id": "bank_ext_bank",
+      "type": "external-system",
+      "label": "Bank",
+      "subdomain": "bank",
+      "meta": {
+        "app": "myapp",
+        "runtimeName": "bank",
+        "source": {
+          "file": "apps/myapp/internal/myapp/handlers.go",
+          "line": 410
+        }
+      }
+    },
+    {
+      "id": "bank_inv_an-amount-is-whole-cents",
+      "type": "invariant",
+      "label": "An Amount Is Whole Cents",
+      "subdomain": "bank",
+      "rule": "A transaction's amount is a whole number of cents.",
+      "errorCodes": [
+        "AnAmountIsWholeCents"
+      ],
+      "meta": {
+        "app": "myapp",
+        "runtimeName": "AnAmountIsWholeCents",
+        "source": {
+          "file": "apps/myapp/internal/myapp/reasons_bank.go",
+          "line": 30
+        }
+      }
+    },
+    {
+      "id": "bank_tbl_bank-transactions",
+      "type": "datastore",
+      "label": "Bank Transactions",
+      "subdomain": "bank",
+      "meta": {
+        "app": "myapp",
+        "runtimeName": "bank_transactions",
+        "source": {
+          "file": "apps/myapp/internal/myapp/models.go",
+          "line": 72
+        }
+      }
+    },
+    {
+      "id": "notes_cmd_correct-note",
+      "type": "command",
+      "label": "Correct Note",
+      "subdomain": "notes",
+      "meta": {
+        "app": "myapp",
+        "runtimeName": "CorrectNote",
+        "source": {
+          "file": "apps/myapp/internal/myapp/handlers.go",
+          "line": 305
+        }
+      }
+    },
+    {
+      "id": "notes_cmd_import-notes",
+      "type": "command",
+      "label": "Import Notes",
+      "subdomain": "notes",
+      "meta": {
+        "app": "myapp",
+        "runtimeName": "ImportNotes",
+        "source": {
+          "file": "apps/myapp/internal/myapp/handlers.go",
+          "line": 360
+        }
+      }
+    },
+    {
+      "id": "notes_cmd_write-note",
+      "type": "command",
+      "label": "Write Note",
+      "subdomain": "notes",
+      "meta": {
+        "app": "myapp",
+        "runtimeName": "WriteNote",
+        "source": {
+          "file": "apps/myapp/internal/myapp/handlers.go",
+          "line": 237
+        }
+      }
+    },
+    {
+      "id": "notes_evt_note-corrected",
+      "type": "event",
+      "label": "Note Corrected",
+      "subdomain": "notes",
+      "meta": {
+        "app": "myapp",
+        "runtimeName": "NoteCorrected",
+        "source": {
+          "file": "apps/myapp/internal/myapp/reasons_notes.go",
+          "line": 19
+        }
+      }
+    },
+    {
+      "id": "notes_evt_note-written",
+      "type": "event",
+      "label": "Note Written",
+      "subdomain": "notes",
+      "meta": {
+        "app": "myapp",
+        "runtimeName": "NoteWritten",
+        "source": {
+          "file": "apps/myapp/internal/myapp/reasons_notes.go",
+          "line": 15
+        }
+      }
+    },
+    {
+      "id": "notes_evt_welcome-note-written",
+      "type": "event",
+      "label": "Welcome Note Written",
+      "subdomain": "notes",
+      "meta": {
+        "app": "myapp",
+        "runtimeName": "WelcomeNoteWritten",
+        "source": {
+          "file": "apps/myapp/internal/myapp/reasons_notes.go",
+          "line": 23
+        }
+      }
+    },
+    {
+      "id": "notes_inv_a-correction-changes-something",
+      "type": "invariant",
+      "label": "A Correction Changes Something",
+      "subdomain": "notes",
+      "rule": "A correction must change the note's title or its body.",
+      "errorCodes": [
+        "ACorrectionChangesSomething"
+      ],
+      "meta": {
+        "app": "myapp",
+        "runtimeName": "ACorrectionChangesSomething",
+        "source": {
+          "file": "apps/myapp/internal/myapp/reasons_notes.go",
+          "line": 48
+        }
+      }
+    },
+    {
+      "id": "notes_inv_every-new-member-is-welcomed",
+      "type": "invariant",
+      "label": "Every New Member Is Welcomed",
+      "subdomain": "notes",
+      "rule": "Every member who joins gets a welcome note.",
+      "errorCodes": [
+        "EveryNewMemberIsWelcomed"
+      ],
+      "meta": {
+        "app": "myapp",
+        "runtimeName": "EveryNewMemberIsWelcomed",
+        "source": {
+          "file": "apps/myapp/internal/myapp/reasons_notes.go",
+          "line": 55
+        }
+      }
+    },
+    {
+      "id": "notes_pol_member-joined-then-welcome-note-written",
+      "type": "policy",
+      "label": "Member Joined Then Welcome Note Written",
+      "subdomain": "notes",
+      "meta": {
+        "app": "myapp",
+        "runtimeName": "MemberJoinedThenWelcomeNoteWritten",
+        "source": {
+          "file": "apps/myapp/internal/myapp/reasons_notes.go",
+          "line": 23
+        }
+      }
+    },
+    {
+      "id": "notes_tbl_notes",
+      "type": "datastore",
+      "label": "Notes",
+      "subdomain": "notes",
+      "meta": {
+        "app": "myapp",
+        "runtimeName": "notes",
+        "source": {
+          "file": "apps/myapp/internal/myapp/models.go",
+          "line": 58
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "accounts_cmd_join",
+      "to": "accounts_evt_member-joined",
+      "kind": "produces"
+    },
+    {
+      "from": "accounts_evt_member-joined",
+      "to": "notes_pol_member-joined-then-welcome-note-written",
+      "kind": "triggers"
+    },
+    {
+      "from": "accounts_evt_member-joined",
+      "to": "accounts_tbl_members",
+      "kind": "writes-to"
+    },
+    {
+      "from": "bank_cmd_bank-reported-transaction",
+      "to": "bank_inv_an-amount-is-whole-cents",
+      "kind": "guarded-by"
+    },
+    {
+      "from": "bank_cmd_bank-reported-transaction",
+      "to": "bank_evt_transaction-reported",
+      "kind": "produces"
+    },
+    {
+      "from": "bank_evt_transaction-reported",
+      "to": "bank_tbl_bank-transactions",
+      "kind": "writes-to"
+    },
+    {
+      "from": "bank_ext_bank",
+      "to": "bank_cmd_bank-reported-transaction",
+      "kind": "invokes"
+    },
+    {
+      "from": "notes_cmd_correct-note",
+      "to": "notes_inv_a-correction-changes-something",
+      "kind": "guarded-by"
+    },
+    {
+      "from": "notes_cmd_correct-note",
+      "to": "notes_evt_note-corrected",
+      "kind": "produces"
+    },
+    {
+      "from": "notes_cmd_import-notes",
+      "to": "notes_evt_note-written",
+      "kind": "produces"
+    },
+    {
+      "from": "notes_cmd_write-note",
+      "to": "notes_evt_note-written",
+      "kind": "produces"
+    },
+    {
+      "from": "notes_evt_note-corrected",
+      "to": "notes_tbl_notes",
+      "kind": "writes-to"
+    },
+    {
+      "from": "notes_evt_note-written",
+      "to": "notes_tbl_notes",
+      "kind": "writes-to"
+    },
+    {
+      "from": "notes_evt_welcome-note-written",
+      "to": "notes_tbl_notes",
+      "kind": "writes-to"
+    },
+    {
+      "from": "notes_pol_member-joined-then-welcome-note-written",
+      "to": "notes_inv_every-new-member-is-welcomed",
+      "kind": "guarded-by"
+    },
+    {
+      "from": "notes_pol_member-joined-then-welcome-note-written",
+      "to": "notes_evt_welcome-note-written",
+      "kind": "produces"
+    }
+  ]
+}

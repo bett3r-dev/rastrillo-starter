@@ -54,11 +54,14 @@ docs/decisions/  ADRs
 
 ## The gate
 
-`make ci` at the root: every app's own `make ci` (vet, gofmt,
-staticcheck, govulncheck, budgets, tests, the perf lane, the migration
-check, `make contexts`, `make escapes`, `make flow-check`, `make
-oracle` where the app has one, and the browser drive), then `libs`
-and `tools`, then gitleaks once.
+`make ci` at the root: `toolchain-check`, then `libs` and `tools`,
+then every app's own `make ci` (vet, gofmt, staticcheck, govulncheck,
+budgets, tests, the perf lane, the migration check, `make contexts`,
+`make escapes`, `make flow-check`, `make oracle` where the app has
+one, and the browser drive), then `blueprint-check` (the Blueprint
+graph drawn from the committed flow maps into a temporary directory,
+failing on a refused input, edge or name collision), then gitleaks
+once.
 `make -C apps/<app> ci` is one app's gate. While editing:
 `go test -short ./internal/<app>/... ./internal/<app>test/` from the
 app's directory. `CGO_ENABLED=0` throughout. Every Makefile pins the
@@ -121,6 +124,24 @@ Thens. `apps/myapp/oracle` is the pattern.
    A create's diff is the whole row, so a reason that creates lists
    every column.
 
+   A context names its **invariants** beside its reasons
+   (`<context>Invariants` in `reasons_<context>.go`, gathered in
+   `Invariants`, installed as `Policy.Invariants`): each a `Name`, the
+   rule in the business's words, the reasons it `Guards` (may refuse)
+   and, per reason, the tables it `Shapes`. A guard refuses with
+   `Trail.Refuse(ctx, rule, detail)` on a Trail from `Policy.Begin`: it
+   writes nothing, logs one `refused` line, and the handler shows the
+   detail with the rule as `data-rule`; a rule no invariant declares
+   panics under `go test` and fails the request otherwise. A write a
+   rule shapes names it with `By` after `Because`, and its change
+   carries it as `rule`; a shaped write naming no rule
+   (`ErrRuleRequired`) or one that does not shape it
+   (`ErrRuleMismatch`) is refused before SQLite, and `Install` refuses
+   an invariant shaping a table its reason does not write
+   (`ErrBadInvariant`). `invariants_test.go` gives every invariant a
+   scenario, and `verify` holds each record to its rule from the rule
+   column's migration on.
+
    **A change record is a state change that matters to the business**
    (the owner's ruling in blueprint2, 2026-10-10). The audit trail
    answers "what changed, and why", so a transient operation (a poll, a
@@ -161,12 +182,17 @@ Thens. `apps/myapp/oracle` is the pattern.
    entry point's direct facts, the policies (a change caused by one in
    another context) and the chains
    `Command → [context] Event ⟹ [context] Event`. They are generated
-   by `make flow` and never hand-edited; `make ci` fails only when
-   they drift from what the scenarios produce. Nothing in them is a
-   rule: unnamed entry points, mixed-context requests and implicit
-   crossings are reported, not refused. They are the map of what the
-   code does, and `flow.json` (versioned) is what a Blueprint board
-   renders from.
+   by `make flow` and never hand-edited; `make ci` fails when they
+   drift from what the scenarios produce, and `make flow` and
+   `flow-check` both fail when a named entry point, reason, table or
+   invariant in the map has no source in the app's code (the census).
+   Nothing else in them is a rule: unnamed entry points, mixed-context
+   requests and implicit crossings are reported, not refused. They
+   are the map of what the code does, and `flow.json` (versioned) is
+   what a Blueprint board renders from: `make blueprint` at the root
+   writes `.blueprint/` (ignored) from every committed `flow.json`,
+   running no scenario, and `.blueprint.config.json` names it as
+   Steward's extract command.
 
    A cause counts as a parent only within one request (ADR 0003's
    same-request parent rule, adopted 2026-10-09). A change caused by a
@@ -257,8 +283,10 @@ rot.
   "why did this change?" without database access. `/changes.json?after=<id>`
   is the same rows for a machine, oldest first, 500 a page, behind
   the same sign-in; its field names (`id, reason, cause, request_id,
-  correlation_id, actor, on_behalf_of, entry_point, scope, table,
-  row_id, op, diff, created_at`) are a contract. A cause that names a
+  correlation_id, actor, on_behalf_of, entry_point, scope, rule,
+  table, row_id, op, diff, created_at`) are a contract; `rule` is
+  absent when no invariant shaped the change, and `/changes` reads it
+  as "by rule <Name>". A cause that names a
   change links to it, so a correction sits one click from what it
   corrects.
 - A mistake is corrected by a new change, never by rewriting: a reason
@@ -291,11 +319,11 @@ with the app's gate green:
 
 1. `migrations.go`: `BootSchema = migrate.Merge(sessions.Schema, changes.Schema, Schema)`.
 2. `models.go`: `Tracked`, `Untracked` (each with its reason), `TrackedExempt`.
-3. `reasons.go` (with `ReasonWrites`) plus one `reasons_<context>.go` (its reasons, tables and `<context>Writes`) and `CONTEXT-<context>.md` per context.
+3. `reasons.go` (with `ReasonWrites` and `Invariants`) plus one `reasons_<context>.go` (its reasons, tables, `<context>Writes` and `<context>Invariants`) and `CONTEXT-<context>.md` per context.
 4. `handlers.go`: `trail(r, entryPoint)`, and an entry point named on every Trail the app opens.
-5. `app.go`: `changes.Install` (with `Untracked: Untracked`, the boot census, and `Allow: ReasonWrites`), `telemetry.DB`, `telemetry.HTTP` first, the `correlation` middleware.
-6. `cmd/<name>/main.go`: `telemetry.Setup`, the `Tee(Correlate(stderr), tel.Logs)` logger, `Shutdown` after `Serve`, the `verify` subcommand, and `exitWhenIdle` behind `<NAME>_IDLE_TIMEOUT` (`libs/activation`, off unset) with its test in `cmd/<name>/main_test.go`.
-7. `internal/<name>test/`: `scenario_test.go` (with `collectFlow` in `given`), `harness_test.go` (`flowGate` after `budget.Main`), `binding_test.go`, `contexts_test.go`, `conventions_test.go`, `flow_test.go`, `writes_test.go`, `coverage_test.go` and `writesites_test.go` (`routeGate` then `writeGate` after `flowGate`, `recordWrites` in `newApp`, the harness logger wrapped in `telemetry.Correlate`), `escapes_test.go` (the escape-hatch census, its roots repointed); the Makefile's `contexts`, `escapes`, `flow`, `flow-check` and `browser` targets, `ci` as `../../scripts/ci-gate $(CI)` with all but `flow` in `CI`, and every conditional target's SKIP line; `make flow` once, and commit `docs/flow.md` and `flow.json`.
+5. `app.go`: `changes.Install` (with `Untracked: Untracked`, the boot census, `Allow: ReasonWrites` and `Invariants: Invariants`), `telemetry.DB`, `telemetry.HTTP` first, the `correlation` middleware.
+6. `cmd/<name>/main.go`: `telemetry.Setup`, the `Tee(Correlate(stderr), tel.Logs)` logger, `Shutdown` after `Serve`, the `verify` subcommand (`changes.Verify` handed `Invariants`, run by a test in `cmd/<name>/main_test.go`), and `exitWhenIdle` behind `<NAME>_IDLE_TIMEOUT` (`libs/activation`, off unset) with its test in `cmd/<name>/main_test.go`.
+7. `internal/<name>test/`: `scenario_test.go` (with `collectFlow` in `given`), `harness_test.go` (`flowGate` after `budget.Main`), `binding_test.go`, `invariants_test.go`, `contexts_test.go`, `conventions_test.go`, `flow_test.go`, `writes_test.go`, `coverage_test.go` and `writesites_test.go` (`routeGate` then `writeGate` after `flowGate`, `recordWrites` in `newApp`, the harness logger wrapped in `telemetry.Correlate`), `escapes_test.go` (the escape-hatch census, its roots repointed); the Makefile's `contexts`, `escapes`, `flow`, `flow-check` and `browser` targets, `ci` as `../../scripts/ci-gate $(CI)` with all but `flow` in `CI`, and every conditional target's SKIP line; `make flow` once, and commit `docs/flow.md` and `flow.json`.
 8. `make dev` and `observe` targets, the dashboard in `ops/observability/dashboards/`.
 
 ## The prompt ledger

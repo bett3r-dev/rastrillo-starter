@@ -1,5 +1,6 @@
 {
-  "version": 1,
+  "version": 2,
+  "app": "myapp",
   "entry_points": [
     {
       "name": "CorrectNote",
@@ -9,7 +10,8 @@
       ],
       "actors": [
         "member"
-      ]
+      ],
+      "rules": []
     },
     {
       "name": "Join",
@@ -19,7 +21,8 @@
       ],
       "actors": [
         "human"
-      ]
+      ],
+      "rules": []
     },
     {
       "name": "WriteNote",
@@ -29,7 +32,8 @@
       ],
       "actors": [
         "member"
-      ]
+      ],
+      "rules": []
     }
   ],
   "unnamed": [],
@@ -49,6 +53,7 @@
         "TestScenarioANoteWithoutATitleIsRefused",
         "TestScenarioAReconnectCatchesUp",
         "TestScenarioARolledBackWriteRingsNothing",
+        "TestScenarioAnUnchangedCorrectionIsRefused",
         "TestScenarioCorrectingANote",
         "TestScenarioEveryFormIsAScreenThatLandsNothing",
         "TestScenarioJoining",
@@ -56,6 +61,12 @@
         "TestScenarioTheNotesPageSaysWhatRefreshesIt",
         "TestScenarioWritingANote",
         "TestScenarioWritingANoteRingsEveryNotesPage"
+      ],
+      "rules": [
+        {
+          "reason": "WelcomeNoteWritten",
+          "rule": "EveryNewMemberIsWelcomed"
+        }
       ]
     }
   ],
@@ -91,7 +102,13 @@
             "reason": "WelcomeNoteWritten",
             "context": "notes"
           },
-          "scenarios": []
+          "scenarios": [],
+          "rules": [
+            {
+              "reason": "WelcomeNoteWritten",
+              "rule": "EveryNewMemberIsWelcomed"
+            }
+          ]
         }
       ],
       "scenarios": [
@@ -100,6 +117,7 @@
         "TestScenarioANoteWithoutATitleIsRefused",
         "TestScenarioAReconnectCatchesUp",
         "TestScenarioARolledBackWriteRingsNothing",
+        "TestScenarioAnUnchangedCorrectionIsRefused",
         "TestScenarioCorrectingANote",
         "TestScenarioEveryFormIsAScreenThatLandsNothing",
         "TestScenarioJoining",
@@ -121,6 +139,7 @@
         "TestScenarioANoteKeepsItsOwnHistory",
         "TestScenarioAReconnectCatchesUp",
         "TestScenarioARolledBackWriteRingsNothing",
+        "TestScenarioAnUnchangedCorrectionIsRefused",
         "TestScenarioCorrectingANote",
         "TestScenarioEveryFormIsAScreenThatLandsNothing",
         "TestScenarioTheChangeLogIsReadableByAMachine",
@@ -132,5 +151,119 @@
   ],
   "empty": [],
   "mixed": [],
-  "implicit_crossings": []
+  "implicit_crossings": [],
+  "invariants": [
+    {
+      "name": "ACorrectionChangesSomething",
+      "context": "notes",
+      "rule": "A correction must change the note's title or its body.",
+      "guards": [
+        "NoteCorrected"
+      ],
+      "shapes": {},
+      "source": {
+        "file": "internal/myapp/reasons_notes.go",
+        "line": 33
+      }
+    },
+    {
+      "name": "EveryNewMemberIsWelcomed",
+      "context": "notes",
+      "rule": "Every member who joins gets a welcome note.",
+      "guards": [],
+      "shapes": {
+        "WelcomeNoteWritten": [
+          "notes"
+        ]
+      },
+      "source": {
+        "file": "internal/myapp/reasons_notes.go",
+        "line": 37
+      }
+    }
+  ],
+  "writes": [
+    {
+      "reason": "MemberJoined",
+      "context": "accounts",
+      "tables": [
+        "members"
+      ]
+    },
+    {
+      "reason": "NoteCorrected",
+      "context": "notes",
+      "tables": [
+        "notes"
+      ]
+    },
+    {
+      "reason": "NoteWritten",
+      "context": "notes",
+      "tables": [
+        "notes"
+      ]
+    },
+    {
+      "reason": "WelcomeNoteWritten",
+      "context": "notes",
+      "tables": [
+        "notes"
+      ]
+    }
+  ],
+  "sources": {
+    "entry_points": {
+      "CorrectNote": {
+        "file": "internal/myapp/handlers.go",
+        "line": 307
+      },
+      "Join": {
+        "file": "internal/myapp/handlers.go",
+        "line": 103
+      },
+      "WriteNote": {
+        "file": "internal/myapp/handlers.go",
+        "line": 241
+      }
+    },
+    "reasons": {
+      "MemberJoined": {
+        "file": "internal/myapp/reasons_accounts.go",
+        "line": 13
+      },
+      "NoteCorrected": {
+        "file": "internal/myapp/reasons_notes.go",
+        "line": 19
+      },
+      "NoteWritten": {
+        "file": "internal/myapp/reasons_notes.go",
+        "line": 15
+      },
+      "WelcomeNoteWritten": {
+        "file": "internal/myapp/reasons_notes.go",
+        "line": 23
+      }
+    },
+    "tables": {
+      "members": {
+        "file": "internal/myapp/models.go",
+        "line": 44
+      },
+      "notes": {
+        "file": "internal/myapp/models.go",
+        "line": 58
+      }
+    },
+    "invariants": {
+      "ACorrectionChangesSomething": {
+        "file": "internal/myapp/reasons_notes.go",
+        "line": 33
+      },
+      "EveryNewMemberIsWelcomed": {
+        "file": "internal/myapp/reasons_notes.go",
+        "line": 37
+      }
+    }
+  }
 }

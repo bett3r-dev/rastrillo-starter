@@ -1,3 +1,7 @@
 .work/
 # go.work.sum is local resolution state for the workspace file.
 go.work.sum
+
+# make blueprint writes the Blueprint graph here; it is generated from
+# the committed apps/*/docs/flow.json and never committed.
+.blueprint/

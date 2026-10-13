@@ -1,6 +1,7 @@
 {{define "content"}}
 {{template "page-header" dict "Title" "Correct a note" "Sub" "The correction is recorded beside the original; nothing is rewritten."}}
 <div rst-box>
+{{with .Data.Refused}}{{template "refusal" .}}{{end}}
 <form rst-form method="post" action="/notes/{{.Data.ID}}/correct">
   {{template "field-text" dict "Name" "title" "Label" "Title" "Value" (index .Data.Values "title") "Required" true "Autofocus" true "Error" (index .Data.Errors "title")}}
   {{template "field-text" dict "Name" "body" "Label" "Note" "Value" (index .Data.Values "body") "Error" (index .Data.Errors "body")}}

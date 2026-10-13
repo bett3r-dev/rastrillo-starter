@@ -33,16 +33,36 @@ func (m Mismatch) String() string {
 // Verify folds every tracked row's changes in id order and compares
 // the result with the row as it is: the whole row from its create,
 // each update's fields over it, gone after a delete. It names the
-// rows that disagree, in table order then id order, and says nothing
-// else. exempt columns (the password hash) and updated_at, which GORM
-// stamps outside the diff, are not compared.
+// rows that disagree, in table order then id order. exempt columns
+// (the password hash) and updated_at, which GORM stamps outside the
+// diff, are not compared.
+//
+// It also holds each table's changes, in id order after its rows, to
+// the rules in invariants: a change naming a rule no invariant
+// declares, at any age, and a change whose (reason, table) a rule
+// shapes that names none, but only when it was created after the
+// ledger's applied_at for RuleMigration, since a record from before
+// the rule column is not held to name one (RUS-83 D11). So a database
+// that has not run RuleMigration (its ledger has no row for it, or
+// changes has no rule column) holds no change to name a rule; one
+// with the column and no ledger at all (built by AutoMigrate) holds
+// every change.
 //
 // This is the check after the fact: a write that met neither the
 // hook nor the guard trigger (a migration, another process) shows
 // up here as a row the record cannot explain.
-func Verify(g *gorm.DB, tracked []string, exempt map[string][]string) ([]Mismatch, error) {
+func Verify(g *gorm.DB, tracked []string, exempt map[string][]string, invariants []Invariant) ([]Mismatch, error) {
 	var out []Mismatch
 	naming := schema.NamingStrategy{}
+	cutoff, holds, err := ruleCutoff(g)
+	if err != nil {
+		return nil, err
+	}
+	p := Policy{Invariants: invariants}
+	declared := map[string]bool{}
+	for _, inv := range invariants {
+		declared[inv.Name] = true
+	}
 	for _, table := range tracked {
 		skip := map[string]bool{"updated_at": true}
 		for _, c := range exempt[table] {
@@ -127,8 +147,47 @@ func Verify(g *gorm.DB, tracked []string, exempt map[string][]string) ([]Mismatc
 				out = append(out, Mismatch{Entity: table, EntityID: id, Problem: "in the record, not live, and never deleted"})
 			}
 		}
+		for _, c := range cs {
+			switch shaping := p.shaping(c.Reason, table); {
+			case c.Rule != "" && !declared[c.Rule]:
+				out = append(out, Mismatch{Entity: table, EntityID: c.EntityID, Problem: fmt.Sprintf("change #%d names rule %s, which no invariant declares", c.ID, c.Rule)})
+			case c.Rule == "" && len(shaping) > 0 && holds && c.CreatedAt.After(cutoff):
+				out = append(out, Mismatch{Entity: table, EntityID: c.EntityID, Problem: fmt.Sprintf("change #%d is %s, which %s shapes, and names no rule", c.ID, c.Reason, strings.Join(shaping, ", "))})
+			}
+		}
 	}
 	return out, nil
+}
+
+// RuleMigration is the ledger id (rastrillo_migrations.id, namespace
+// "/" file name) of the migration that added changes.rule.
+const RuleMigration = "changes/0005_changes_rule"
+
+// ruleCutoff is when RuleMigration was applied, as the ledger records
+// it (RFC 3339 in UTC), and whether a change after it is held to name
+// its rule at all. Without the rule column, or with a ledger that has
+// no RuleMigration row, nothing is held: every record predates the
+// column. With the column and no ledger, every change is held (the
+// zero time).
+func ruleCutoff(g *gorm.DB) (time.Time, bool, error) {
+	if !g.Migrator().HasColumn("changes", "rule") {
+		return time.Time{}, false, nil
+	}
+	if !g.Migrator().HasTable("rastrillo_migrations") {
+		return time.Time{}, true, nil
+	}
+	var at []string
+	if err := g.Raw("SELECT applied_at FROM rastrillo_migrations WHERE id = ?", RuleMigration).Scan(&at).Error; err != nil {
+		return time.Time{}, false, err
+	}
+	if len(at) == 0 {
+		return time.Time{}, false, nil
+	}
+	t, err := time.Parse(time.RFC3339Nano, at[0])
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("changes: ledger applied_at for %s: %w", RuleMigration, err)
+	}
+	return t, true, nil
 }
 
 func asInt(v any) int64 {

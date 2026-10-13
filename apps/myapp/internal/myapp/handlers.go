@@ -30,6 +30,7 @@ type app struct {
 	logger *slog.Logger
 	sess   *sessions.Sessions
 	bell   *doorbell.Bell
+	policy changes.Policy // as installed; opens every Trail (trail)
 }
 
 // trail opens the request's change Trail with its actor and its entry
@@ -40,13 +41,15 @@ type app struct {
 // correlation is not handed in: each write reads it off the context
 // it runs under. The actor is the signed-in member (member:<id>), or
 // "human" on the one route a person uses before they are a member
-// (signing up). Agents open their own with their name.
+// (signing up). Agents open their own with their name. The Trail is
+// the installed policy's, so it may refuse by a declared invariant
+// (Trail.Refuse).
 func (a *app) trail(r *http.Request, entryPoint string) (*changes.Trail, context.Context) {
 	actor := "human"
 	if uid, ok := sessions.UserID(r); ok {
 		actor = "member:" + strconv.FormatInt(uid, 10)
 	}
-	t := changes.Begin(actor)
+	t := a.policy.Begin(actor)
 	t.EntryPoint = entryPoint
 	return t, t.Context(r.Context())
 }
@@ -96,7 +99,7 @@ func (a *app) createMember(ctx context.Context, email, hash string) (int64, erro
 	if name == "" {
 		name = strings.SplitN(email, "@", 2)[0]
 	}
-	t := changes.Begin("human").Because(ReasonMemberJoined, "")
+	t := a.policy.Begin("human").Because(ReasonMemberJoined, "")
 	t.EntryPoint = "Join"
 	m := Member{Email: email, Name: name}
 	// The diff must not carry the hash: write it in a second step,
@@ -205,9 +208,10 @@ func (a *app) notesEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 type noteForm struct {
-	ID     int64
-	Values map[string]string
-	Errors form.Errors
+	ID      int64
+	Values  map[string]string
+	Errors  form.Errors
+	Refused *changes.Refused // a named rule's refusal, shown above the form
 }
 
 var noteFields = []form.Field{
@@ -246,9 +250,11 @@ func (a *app) noteCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 // welcome is the notes context's policy on a member joining: a note
-// greeting them, caused by the MemberJoined change it reacts to.
+// greeting them, caused by the MemberJoined change it reacts to and
+// written by the rule EveryNewMemberIsWelcomed, which the change
+// records as its rule.
 func welcome(tx *gorm.DB, t *changes.Trail, m Member, joined changes.Change) error {
-	t.Because(ReasonWelcomeNoteWritten, joined.Ref())
+	t.Because(ReasonWelcomeNoteWritten, joined.Ref()).By(RuleEveryNewMemberIsWelcomed)
 	return tx.Create(&Note{AuthorID: m.ID, Title: "Welcome, " + m.Name}).Error
 }
 
@@ -284,7 +290,9 @@ func (a *app) noteCorrectNew(w http.ResponseWriter, r *http.Request) {
 // noteCorrect puts a note right: a new change, NoteCorrected, whose
 // cause is the most recent change on that note, so the correction
 // sits one click from what it corrects on /changes. The row's fields
-// are written forward; the record keeps both versions.
+// are written forward; the record keeps both versions. A correction
+// that changes neither the title nor the body is refused by
+// ACorrectionChangesSomething before any write, at 422.
 func (a *app) noteCorrect(w http.ResponseWriter, r *http.Request) {
 	n, ok := a.note(w, r)
 	if !ok {
@@ -296,13 +304,23 @@ func (a *app) noteCorrect(w http.ResponseWriter, r *http.Request) {
 		a.render(w, r, "note_correct", "Correct a note", noteForm{ID: n.ID, Values: p.Echo(), Errors: p.Errors()})
 		return
 	}
+	t, ctx := a.trail(r, "CorrectNote")
+	if p.String("title") == n.Title && p.String("body") == n.Body {
+		ref := t.Refuse(ctx, RuleACorrectionChangesSomething, "That correction changes nothing: edit the title or the body.")
+		if ref.Err != nil {
+			a.fail(w, r, "correct note", ref.Err)
+			return
+		}
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		a.render(w, r, "note_correct", "Correct a note", noteForm{ID: n.ID, Values: p.Echo(), Errors: form.Errors{}, Refused: ref})
+		return
+	}
 	var last changes.Change
 	if err := a.db.G.WithContext(r.Context()).Where("entity = ? AND entity_id = ?", "notes", n.ID).
 		Order("id DESC").First(&last).Error; err != nil {
 		a.fail(w, r, "correct note", err)
 		return
 	}
-	t, ctx := a.trail(r, "CorrectNote")
 	t.Within("note:"+strconv.FormatInt(n.ID, 10)).Because(ReasonNoteCorrected, last.Ref())
 	if err := a.db.G.WithContext(ctx).Model(&n).Select("Title", "Body").
 		Updates(map[string]any{"Title": p.String("title"), "Body": p.String("body")}).Error; err != nil {
@@ -346,7 +364,9 @@ const changeFeedLimit = 500
 
 // changeJSON is one change as /changes.json carries it. The field
 // names are a contract: a black-box reader (an oracle, another
-// implementation's judge) holds a change to them.
+// implementation's judge) holds a change to them. rule is the
+// invariant that shaped the change, and the key is absent when none
+// did.
 type changeJSON struct {
 	ID            int64           `json:"id"`
 	Reason        string          `json:"reason"`
@@ -357,6 +377,7 @@ type changeJSON struct {
 	OnBehalfOf    string          `json:"on_behalf_of"`
 	EntryPoint    string          `json:"entry_point"`
 	Scope         string          `json:"scope"`
+	Rule          string          `json:"rule,omitempty"`
 	Table         string          `json:"table"`
 	RowID         int64           `json:"row_id"`
 	Op            string          `json:"op"`
@@ -392,7 +413,7 @@ func (a *app) changeFeed(w http.ResponseWriter, r *http.Request) {
 		out = append(out, changeJSON{
 			ID: c.ID, Reason: c.Reason, Cause: c.Cause, RequestID: c.RequestID,
 			CorrelationID: c.CorrelationID, Actor: c.Actor, OnBehalfOf: c.OnBehalfOf,
-			EntryPoint: c.EntryPoint, Scope: c.Scope, Table: c.Entity, RowID: c.EntityID,
+			EntryPoint: c.EntryPoint, Scope: c.Scope, Rule: c.Rule, Table: c.Entity, RowID: c.EntityID,
 			Op: c.Op, Diff: diff, CreatedAt: c.CreatedAt.UTC().Format(time.RFC3339Nano),
 		})
 	}

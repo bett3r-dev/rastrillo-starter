@@ -51,6 +51,48 @@ func TestScenarioCorrectingANote(t *testing.T) {
 	ana.sees("/changes", myapp.ReasonNoteCorrected, `href="#change-`+itoa(first[0])+`"`)
 }
 
+// Given a member's note, When she posts a correction that changes
+// neither its title nor its body, Then ACorrectionChangesSomething
+// refuses it: 422 with the rule's name as data-rule, nothing lands,
+// and one refused line names the rule, its context, the entry point,
+// her and the request's trace id (the response's X-Correlation-Id).
+func TestScenarioAnUnchangedCorrectionIsRefused(t *testing.T) {
+	t.Parallel()
+	s := givenLogged(t)
+	ana := s.aMember("Ana")
+	redirected(t, ana.writesNote("Groceries", "milk"), "/")
+	n := s.note("Groceries")
+	s.mark_()
+
+	rec := ana.correctsNote(n.ID, "Groceries", "milk")
+
+	s.refusedBy(rec, myapp.RuleACorrectionChangesSomething)
+	if !contains(rec.Body.String(), `<p role="alert" data-rule="ACorrectionChangesSomething">That correction changes nothing: edit the title or the body.</p>`) {
+		t.Fatalf("the refusal's alert is not on the page:\n%s", rec.Body.String())
+	}
+	lines := s.logged("refused")
+	if len(lines) != 1 {
+		t.Fatalf("refused lines = %d, want 1: %v", len(lines), lines)
+	}
+	trace := rec.Header().Get("X-Correlation-Id")
+	if trace == "" {
+		t.Fatal("the response carries no X-Correlation-Id")
+	}
+	for k, want := range map[string]string{
+		"rule":        "ACorrectionChangesSomething",
+		"context":     "notes",
+		"entry_point": "CorrectNote",
+		"actor":       "member:" + itoa(ana.id()),
+		"correlation": trace,
+		"level":       "INFO",
+	} {
+		if got := lines[0][k]; got != want {
+			t.Errorf("refused line %s = %v, want %q (line %v)", k, got, want, lines[0])
+		}
+	}
+	ana.sees("/", "Groceries", "milk")
+}
+
 // Given a member, When she writes a note and corrects it, Then both
 // changes are within that note ("note:<id>") and the note's history
 // reads back through changes.InScope, the write first. The write's own
@@ -90,6 +132,10 @@ func TestScenarioANoteWithoutATitleIsRefused(t *testing.T) {
 
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status %d, want 422", rec.Code)
+	}
+	// A form error names no rule (CONTEXT-notes.md, ACorrectionChangesSomething's "Not").
+	if body := rec.Body.String(); contains(body, "data-rule") {
+		t.Fatalf("a form error carries a data-rule, want none\n%s", body)
 	}
 	s.changed()
 }

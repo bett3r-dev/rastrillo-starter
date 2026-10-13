@@ -1,11 +1,15 @@
 package myapptest
 
 import (
+	"bytes"
+	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"amadan.net/rastrillo/rastrillo/db"
@@ -32,7 +36,8 @@ type scenario struct {
 	t    *testing.T
 	h    http.Handler
 	db   *db.DB
-	mark int64 // the last change id seen; Then reads from here
+	mark int64     // the last change id seen; Then reads from here
+	logs *logLines // what the app logged at Info and above; nil unless givenLogged
 }
 
 // person is a member with a browser: their session cookie.
@@ -48,6 +53,17 @@ func given(t *testing.T) *scenario {
 	h, d := newApp(t)
 	collectFlow(t, d)
 	return &scenario{t: t, h: h, db: d}
+}
+
+// givenLogged is given, also keeping every line the app logs at Info
+// and above, for a Then that asserts one (logged). The harness's own
+// logger keeps errors only.
+func givenLogged(t *testing.T) *scenario {
+	t.Helper()
+	logs := &logLines{}
+	h, d := newAppLogging(t, slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	collectFlow(t, d)
+	return &scenario{t: t, h: h, db: d, logs: logs}
 }
 
 // aMember joins through POST /signup and comes back signed in.
@@ -164,6 +180,59 @@ func (s *scenario) changed(reasons ...string) []changes.Change {
 		s.mark = got[len(got)-1].ID
 	}
 	return got
+}
+
+// refusedBy asserts a named refusal: 422, the page carries the
+// rule's name as data-rule (and nowhere a person reads it), and no
+// change landed since the mark.
+func (s *scenario) refusedBy(rec *httptest.ResponseRecorder, rule string) {
+	s.t.Helper()
+	if rec.Code != http.StatusUnprocessableEntity {
+		s.t.Fatalf("refused by %s: status %d, want 422\n%s", rule, rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `data-rule="`+rule+`"`) {
+		s.t.Fatalf("refused by %s: no data-rule=%q in\n%s", rule, rule, body)
+	}
+	if n := strings.Count(body, rule); n != 1 {
+		s.t.Fatalf("refused by %s: the name appears %d times, want once (data-rule only)\n%s", rule, n, body)
+	}
+	s.changed()
+}
+
+// logged is every line the app logged with message msg since the
+// scenario began, each as its attributes (givenLogged only).
+func (s *scenario) logged(msg string) []map[string]any {
+	s.t.Helper()
+	if s.logs == nil {
+		s.t.Fatal("logged needs givenLogged")
+	}
+	s.logs.mu.Lock()
+	defer s.logs.mu.Unlock()
+	var out []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(s.logs.buf.String()), "\n") {
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			s.t.Fatalf("log line %q: %v", line, err)
+		}
+		if rec["msg"] == msg {
+			out = append(out, rec)
+		}
+	}
+	return out
+}
+
+// logLines collects the app's JSON log lines; the app logs from its
+// handlers' goroutines, so writes and reads take the lock.
+type logLines struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (l *logLines) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
 }
 
 // sees asserts the screen a person gets shows every fragment.

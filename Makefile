@@ -4,7 +4,8 @@
 # shared modules (libs/, tools/) and runs gitleaks once, here: an app's
 # own gitleaks target scans nothing below the repository root.
 #
-#   make ci            every app's gate, libs and tools, gitleaks
+#   make ci            every app's gate, libs and tools, blueprint-check, gitleaks
+#   make blueprint     the Blueprint graph, .blueprint/graph.json and diagnostics.json
 #   make ci-app APP=x  one app's gate (same as make -C apps/x ci)
 #   make new-app NAME=x  scaffold apps/x with this repository's conventions
 
@@ -24,13 +25,13 @@ export STATICCHECK_CACHE ?= $(GOCACHE)/staticcheck
 endif
 
 .NOTPARALLEL:
-.PHONY: ci apps shared toolchain-check gitleaks ci-app new-app ledger-install ledger-push
+.PHONY: ci apps shared toolchain-check blueprint blueprint-check gitleaks ci-app new-app ledger-install ledger-push
 
 # scripts/ci-gate runs each target of CI and certifies only what ran:
 # a target that cannot run prints "SKIP <target> reason=<why>", the
 # gate ends with every SKIP it saw (each app's included), and a target
 # that runs nothing without a SKIP line fails it.
-CI := toolchain-check shared apps gitleaks
+CI := toolchain-check shared apps blueprint-check gitleaks
 ci:
 	@./scripts/ci-gate $(CI)
 
@@ -62,6 +63,22 @@ toolchain-check:
 
 gitleaks:
 	go run $(GITLEAKS) git --no-banner --redact .
+
+# The Blueprint graph (tools/cmd/blueprint, docs/prs/RS-20/design.md):
+# drawn from .blueprint.config.json and every committed
+# apps/*/docs/flow.json alone, so it runs no scenario; make flow in an
+# app is what refreshes its map. blueprint writes .blueprint/ (ignored),
+# where Steward reads it: .blueprint.config.json names this target as
+# designTooling.extract. blueprint-check runs the same program into a
+# temporary directory and fails when it exits 1 (a refused input, an
+# edge the non-ddd grammar refuses, a name collision).
+blueprint:
+	CGO_ENABLED=0 go -C tools run ./cmd/blueprint -root $(CURDIR)
+
+blueprint-check:
+	@set -e; out=$$(mktemp -d); trap 'rm -rf "$$out"' EXIT; \
+		CGO_ENABLED=0 go -C tools run ./cmd/blueprint -root $(CURDIR) -out "$$out"; \
+		echo "blueprint: graph drawn, no violation or collision"
 
 # new-app scaffolds apps/$(NAME) with rastrillo new and lays this
 # repository's conventions over it: see scripts/new-app.

@@ -2,6 +2,7 @@ package changes_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -181,8 +182,9 @@ func TestAWriteOnBehalfOfAMemberRecordsBoth(t *testing.T) {
 
 // The migrations, not AutoMigrate, are what every app boots with:
 // they must give changes the on_behalf_of and scope columns (scope
-// indexed), empty for rows recorded before them, and keep the table
-// append-only.
+// indexed), empty for rows recorded before them, and the nullable rule
+// column, NULL for them; and keep the table append-only, the rule
+// column included.
 func TestSchemaAddsItsColumnsAndStaysAppendOnly(t *testing.T) {
 	t.Parallel()
 	d, err := db.Open(filepath.Join(t.TempDir(), "s.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -209,8 +211,28 @@ func TestSchemaAddsItsColumnsAndStaysAppendOnly(t *testing.T) {
 	if idx != 1 {
 		t.Fatal("the migrations left changes.scope unindexed")
 	}
-	if err := d.G.Exec("UPDATE changes SET on_behalf_of = 'member:1'").Error; err == nil || !strings.Contains(err.Error(), "append-only") {
-		t.Fatalf("UPDATE on changes: err = %v, want the append-only trigger", err)
+	var notNull []int
+	if err := d.G.Raw("SELECT \"notnull\" FROM pragma_table_info('changes') WHERE name = 'rule'").Scan(&notNull).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(notNull, []int{0}) {
+		t.Fatalf("changes.rule notnull = %v, want one nullable column", notNull)
+	}
+	var unruled int64
+	if err := d.G.Raw("SELECT count(*) FROM changes WHERE rule IS NULL").Scan(&unruled).Error; err != nil {
+		t.Fatal(err)
+	}
+	if unruled != 1 {
+		t.Fatalf("%d rows with a NULL rule, want the row recorded without one", unruled)
+	}
+	for _, stmt := range []string{
+		"UPDATE changes SET on_behalf_of = 'member:1'",
+		"UPDATE changes SET rule = 'EveryNewMemberIsWelcomed'",
+		"DELETE FROM changes",
+	} {
+		if err := d.G.Exec(stmt).Error; err == nil || !strings.Contains(err.Error(), "append-only") {
+			t.Fatalf("%s: err = %v, want the append-only trigger", stmt, err)
+		}
 	}
 }
 
@@ -847,5 +869,446 @@ func TestInstallRefusesAnUndeclaredTableByName(t *testing.T) {
 	p.Untracked = map[string]string{"planted_inbox": "an inbox", "planted_ledger": "a tick ledger"}
 	if err := changes.Install(d.G, p); err != nil {
 		t.Fatalf("Install with both declared untracked: %v", err)
+	}
+}
+
+// note is a table an invariant shapes, named as the welcome policy's.
+type note struct {
+	ID    int64
+	Title string
+}
+
+// openShaped is a database whose policy declares the welcome
+// invariant: EveryNewMemberIsWelcomed shapes WelcomeNoteWritten on
+// notes, and ACorrectionChangesSomething guards NoteCorrected but
+// shapes nothing.
+func openShaped(t *testing.T) *gorm.DB {
+	t.Helper()
+	d, err := db.Open(filepath.Join(t.TempDir(), "c.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	if err := d.G.AutoMigrate(&changes.Change{}, &note{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := changes.Install(d.G, shapedPolicy()); err != nil {
+		t.Fatal(err)
+	}
+	return d.G
+}
+
+func shapedPolicy() changes.Policy {
+	return changes.Policy{
+		Tracked:     []string{"notes"},
+		Correlation: correlation,
+		Allow: map[string]changes.Writes{
+			"WelcomeNoteWritten": {"notes": {"id", "title"}},
+			"NoteWritten":        {"notes": {"id", "title"}},
+			"NoteCorrected":      {"notes": {"title"}},
+		},
+		Invariants: []changes.Invariant{
+			{Name: "EveryNewMemberIsWelcomed", Context: "notes", Rule: "Every member who joins gets a welcome note.",
+				Shapes: map[string][]string{"WelcomeNoteWritten": {"notes"}}},
+			{Name: "ACorrectionChangesSomething", Context: "notes", Rule: "A correction must change the note's title or its body.",
+				Guards: []string{"NoteCorrected"}},
+		},
+	}
+}
+
+// landed is how many notes and changes the database holds.
+func landed(t *testing.T, g *gorm.DB) (notes, records int64) {
+	t.Helper()
+	g.Model(&note{}).Count(&notes)
+	g.Model(&changes.Change{}).Count(&records)
+	return notes, records
+}
+
+// Scenario "rule required": a write a declared rule shapes, made
+// without naming it, is refused before SQLite, naming the reason, the
+// table and the rule, and nothing lands.
+func TestAShapedWriteWithoutItsRuleIsRefused(t *testing.T) {
+	t.Parallel()
+	g := openShaped(t)
+	tr := changes.Begin("agent:welcome").Because("WelcomeNoteWritten", "")
+	err := g.WithContext(tr.Context(inRequest("req-1"))).Create(&note{Title: "Welcome"}).Error
+	if !errors.Is(err, changes.ErrRuleRequired) {
+		t.Fatalf("err = %v, want ErrRuleRequired", err)
+	}
+	for _, name := range []string{"WelcomeNoteWritten", "notes", "EveryNewMemberIsWelcomed"} {
+		if !strings.Contains(err.Error(), name) {
+			t.Errorf("err = %q, want it to name %q", err, name)
+		}
+	}
+	if n, m := landed(t, g); n != 0 || m != 0 {
+		t.Fatalf("a refused write landed: %d notes, %d changes; want 0 and 0", n, m)
+	}
+}
+
+// Scenario "rule recorded": the write that names its rule with By
+// lands, and its change carries the rule, in the Trail and the table.
+func TestAShapedWriteRecordsItsRule(t *testing.T) {
+	t.Parallel()
+	g := openShaped(t)
+	tr := changes.Begin("agent:welcome").Because("WelcomeNoteWritten", "").By("EveryNewMemberIsWelcomed")
+	if err := g.WithContext(tr.Context(inRequest("req-1"))).Create(&note{Title: "Welcome"}).Error; err != nil {
+		t.Fatalf("a shaped write naming its rule: %v", err)
+	}
+	if c, _ := tr.Last(); c.Rule != "EveryNewMemberIsWelcomed" {
+		t.Fatalf("recorded rule = %q, want EveryNewMemberIsWelcomed", c.Rule)
+	}
+	var rule string
+	g.Raw("SELECT rule FROM changes").Scan(&rule)
+	if rule != "EveryNewMemberIsWelcomed" {
+		t.Fatalf("changes.rule = %q, want EveryNewMemberIsWelcomed", rule)
+	}
+}
+
+// A named rule that does not shape the write is refused, naming the
+// reason, the table and the rule: a declared rule that only guards,
+// a rule on a reason it does not shape, and a rule nobody declared.
+func TestAWriteNamingAnotherRuleIsRefused(t *testing.T) {
+	t.Parallel()
+	g := openShaped(t)
+	for _, c := range []struct{ reason, rule string }{
+		{"WelcomeNoteWritten", "ACorrectionChangesSomething"},
+		{"NoteWritten", "EveryNewMemberIsWelcomed"},
+		{"WelcomeNoteWritten", "NoSuchRule"},
+	} {
+		tr := changes.Begin("agent:welcome").Because(c.reason, "").By(c.rule)
+		err := g.WithContext(tr.Context(inRequest("req-1"))).Create(&note{Title: "Welcome"}).Error
+		if !errors.Is(err, changes.ErrRuleMismatch) {
+			t.Errorf("%s by %s: err = %v, want ErrRuleMismatch", c.reason, c.rule, err)
+			continue
+		}
+		for _, name := range []string{c.reason, "notes", c.rule} {
+			if !strings.Contains(err.Error(), name) {
+				t.Errorf("%s by %s: err = %q, want it to name %q", c.reason, c.rule, err, name)
+			}
+		}
+	}
+	if n, m := landed(t, g); n != 0 || m != 0 {
+		t.Fatalf("a refused write landed: %d notes, %d changes; want 0 and 0", n, m)
+	}
+}
+
+// By names the rule for the writes under the current Because only: a
+// new Because clears it, so a second shaped write must name it again,
+// and an unshaped write after it records no rule (NULL, not "").
+func TestANewBecauseClearsTheRule(t *testing.T) {
+	t.Parallel()
+	g := openShaped(t)
+	tr := changes.Begin("agent:welcome").Because("WelcomeNoteWritten", "").By("EveryNewMemberIsWelcomed")
+	w := g.WithContext(tr.Context(inRequest("req-1")))
+	if err := w.Create(&note{Title: "Welcome"}).Error; err != nil {
+		t.Fatalf("the first shaped write: %v", err)
+	}
+	tr.Because("WelcomeNoteWritten", "")
+	if err := w.Create(&note{Title: "Again"}).Error; !errors.Is(err, changes.ErrRuleRequired) {
+		t.Fatalf("a shaped write after a new Because: err = %v, want ErrRuleRequired", err)
+	}
+	tr.Because("NoteWritten", "")
+	if err := w.Create(&note{Title: "Plain"}).Error; err != nil {
+		t.Fatalf("an unshaped write after a new Because: %v", err)
+	}
+	if c, _ := tr.Last(); c.Rule != "" {
+		t.Fatalf("the unshaped write recorded rule %q, want none", c.Rule)
+	}
+	var null int64
+	g.Raw("SELECT count(*) FROM changes WHERE rule IS NULL").Scan(&null)
+	if null != 1 {
+		t.Fatalf("%d changes with a NULL rule, want the unshaped one", null)
+	}
+}
+
+// A shaped table must be one its reason writes: Install refuses an
+// invariant whose Shapes name a (reason, table) Allow does not, each
+// one named with its rule, reason and table, in a sorted list; a
+// policy whose shapes are all written installs.
+func TestInstallRefusesAShapeItsReasonDoesNotWrite(t *testing.T) {
+	t.Parallel()
+	d, err := db.Open(filepath.Join(t.TempDir(), "c.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	if err := d.G.AutoMigrate(&changes.Change{}, &note{}); err != nil {
+		t.Fatal(err)
+	}
+	p := shapedPolicy()
+	p.Invariants = append(p.Invariants, changes.Invariant{Name: "EveryCorrectionIsFiled", Context: "notes",
+		Rule: "Every correction is filed.", Shapes: map[string][]string{"NoteCorrected": {"files"}, "AFileFiled": {"notes"}}})
+	err = changes.Install(d.G, p)
+	if !errors.Is(err, changes.ErrBadInvariant) {
+		t.Fatalf("Install with two shapes no reason writes: err = %v, want ErrBadInvariant", err)
+	}
+	want := "EveryCorrectionIsFiled shapes AFileFiled on notes; EveryCorrectionIsFiled shapes NoteCorrected on files"
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("err = %q, want it to name both shapes, sorted: %q", err, want)
+	}
+	if err := changes.Install(d.G, shapedPolicy()); err != nil {
+		t.Fatalf("Install with every shape written: %v", err)
+	}
+}
+
+// openLedgered is a database built the way an app's is, by
+// migrate.Apply over changes.Schema, so rastrillo's ledger holds the
+// row changes/0005_changes_rule; its applied_at is then set to
+// cutoff, so records can be placed on either side of it. It has no
+// Install: the records Verify is to judge are ones the hook would
+// refuse, written straight into the tables.
+func openLedgered(t *testing.T, cutoff string) *gorm.DB {
+	t.Helper()
+	d, err := db.Open(filepath.Join(t.TempDir(), "v.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	if _, err := migrate.Apply(context.Background(), d, migrate.Merge(changes.Schema)); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.G.AutoMigrate(&note{}); err != nil {
+		t.Fatal(err)
+	}
+	res := d.G.Exec("UPDATE rastrillo_migrations SET applied_at = ? WHERE id = 'changes/0005_changes_rule'", cutoff)
+	if res.Error != nil || res.RowsAffected != 1 {
+		t.Fatalf("setting the 0005 ledger row's applied_at: err %v, %d rows", res.Error, res.RowsAffected)
+	}
+	return d.G
+}
+
+// recorded writes a note and the change that creates it, at
+// createdAt, with rule ("" is NULL), past every check the hook makes.
+func recorded(t *testing.T, g *gorm.DB, id int64, reason, rule, createdAt string) {
+	t.Helper()
+	var r any
+	if rule != "" {
+		r = rule
+	}
+	if err := g.Exec("INSERT INTO notes (id, title) VALUES (?, 'Welcome')", id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Exec("INSERT INTO changes (reason, cause, request_id, correlation_id, actor, entity, entity_id, op, diff, rule, created_at) "+
+		"VALUES (?, 'request:r', 'request:r', 'r', 'agent:welcome', 'notes', ?, 'create', ?, ?, ?)",
+		reason, id, `{"ID":`+strconv.FormatInt(id, 10)+`,"Title":"Welcome"}`, r, createdAt).Error; err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Scenarios "old record not held", "new record held" and "unknown
+// rule" (RUS-83 D11): Verify holds a shaped (reason, table) record to
+// name its rule only when it was created after the 0005 migration
+// added the column, and a record naming a rule no invariant declares
+// at any age. A record that names its rule, and one no rule shapes,
+// say nothing.
+func TestVerifyHoldsRecordsToTheirRulesFromTheRuleColumnOn(t *testing.T) {
+	t.Parallel()
+	g := openLedgered(t, "2026-10-01T00:00:00Z")
+	recorded(t, g, 1, "WelcomeNoteWritten", "", "2026-09-30 12:00:00+00:00")
+	recorded(t, g, 2, "WelcomeNoteWritten", "", "2026-10-02 12:00:00+00:00")
+	recorded(t, g, 3, "NoteWritten", "NoSuchRule", "2026-09-30 12:00:00+00:00")
+	recorded(t, g, 4, "WelcomeNoteWritten", "EveryNewMemberIsWelcomed", "2026-10-02 12:00:00+00:00")
+	recorded(t, g, 5, "NoteWritten", "", "2026-10-02 12:00:00+00:00")
+	ms, err := changes.Verify(g, []string{"notes"}, nil, shapedPolicy().Invariants)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make([]string, len(ms))
+	for i, m := range ms {
+		got[i] = m.String()
+	}
+	want := []string{
+		"notes #2: change #2 is WelcomeNoteWritten, which EveryNewMemberIsWelcomed shapes, and names no rule",
+		"notes #3: change #3 names rule NoSuchRule, which no invariant declares",
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("Verify = %q,\nwant %q", got, want)
+	}
+}
+
+// With the rule column and no ledger (a database AutoMigrate built),
+// Verify holds every shaped record to its rule, however old; with a
+// ledger that has no 0005 row, every record predates the rule and
+// none is held; a ledger applied_at it cannot read is an error, not a
+// silent cutoff.
+func TestVerifyWithoutALedgerHoldsEveryRecord(t *testing.T) {
+	t.Parallel()
+	d, err := db.Open(filepath.Join(t.TempDir(), "v.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	if err := d.G.AutoMigrate(&changes.Change{}, &note{}); err != nil {
+		t.Fatal(err)
+	}
+	recorded(t, d.G, 1, "WelcomeNoteWritten", "", "2001-01-01 00:00:00+00:00")
+	ms, err := changes.Verify(d.G, []string{"notes"}, nil, shapedPolicy().Invariants)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ms) != 1 || ms[0].EntityID != 1 || !strings.Contains(ms[0].Problem, "names no rule") {
+		t.Fatalf("Verify = %v, want the one record that names no rule", ms)
+	}
+
+	g := openLedgered(t, "2026-10-01T00:00:00Z")
+	if err := g.Exec("DELETE FROM rastrillo_migrations WHERE id = ?", changes.RuleMigration).Error; err != nil {
+		t.Fatal(err)
+	}
+	recorded(t, g, 1, "WelcomeNoteWritten", "", "2001-01-01 00:00:00+00:00")
+	if ms, err := changes.Verify(g, []string{"notes"}, nil, shapedPolicy().Invariants); err != nil || len(ms) != 0 {
+		t.Fatalf("a ledger without the 0005 row: Verify = %v, %v; want no mismatch, every record predates the rule", ms, err)
+	}
+
+	g = openLedgered(t, "not a time")
+	if _, err := changes.Verify(g, []string{"notes"}, nil, nil); err == nil || !strings.Contains(err.Error(), changes.RuleMigration) {
+		t.Fatalf("an unreadable applied_at: err = %v, want one naming %s", err, changes.RuleMigration)
+	}
+}
+
+// A tenant still at migration 0004 (no 0005 ledger row, no rule
+// column), verified from a copy that was never migrated: every record
+// predates the rule column, so none is held to name one, and the
+// unknown-rule check, with no column to read, reports nothing and
+// does not fail.
+func TestVerifyBeforeTheRuleMigrationHoldsNoRecord(t *testing.T) {
+	t.Parallel()
+	g := openLedgered(t, "2026-10-01T00:00:00Z")
+	for _, stmt := range []string{
+		"DELETE FROM rastrillo_migrations WHERE id = 'changes/0005_changes_rule'",
+		"ALTER TABLE changes DROP COLUMN rule",
+		"INSERT INTO notes (id, title) VALUES (1, 'Welcome')",
+		"INSERT INTO changes (reason, cause, request_id, correlation_id, actor, entity, entity_id, op, diff, created_at) " +
+			`VALUES ('WelcomeNoteWritten', 'request:r', 'request:r', 'r', 'agent:welcome', 'notes', 1, 'create', '{"ID":1,"Title":"Welcome"}', '2026-09-01 12:00:00+00:00')`,
+	} {
+		if err := g.Exec(stmt).Error; err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	ms, err := changes.Verify(g, []string{"notes"}, nil, shapedPolicy().Invariants)
+	if err != nil {
+		t.Fatalf("Verify on a database without the rule column: %v", err)
+	}
+	if len(ms) != 0 {
+		t.Fatalf("Verify = %v, want no mismatch: the record predates the rule column", ms)
+	}
+
+	// Without the column and without a ledger, too: the column's
+	// absence alone says no record can name a rule.
+	if err := g.Exec("DROP TABLE rastrillo_migrations").Error; err != nil {
+		t.Fatal(err)
+	}
+	if ms, err := changes.Verify(g, []string{"notes"}, nil, shapedPolicy().Invariants); err != nil || len(ms) != 0 {
+		t.Fatalf("no rule column and no ledger: Verify = %v, %v; want no mismatch", ms, err)
+	}
+}
+
+// jsonLines is a logger whose lines a test reads back, one map each.
+func jsonLines() (*slog.Logger, func(t *testing.T) []map[string]any) {
+	var buf strings.Builder
+	return slog.New(slog.NewJSONHandler(&buf, nil)), func(t *testing.T) []map[string]any {
+		t.Helper()
+		var out []map[string]any
+		for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+			if line == "" {
+				continue
+			}
+			var m map[string]any
+			if err := json.Unmarshal([]byte(line), &m); err != nil {
+				t.Fatalf("log line %q: %v", line, err)
+			}
+			out = append(out, m)
+		}
+		return out
+	}
+}
+
+// A refusal names a declared rule: it lands nothing, comes back with
+// the rule, its context and the detail, and logs exactly one Info
+// line "refused" naming the rule, the context, the entry point and
+// the actor.
+func TestARefusalLandsNothingAndLogsOneLine(t *testing.T) {
+	t.Parallel()
+	g := openShaped(t)
+	logger, lines := jsonLines()
+	p := shapedPolicy()
+	p.Logger = logger
+	tr := p.Begin("member:3")
+	tr.EntryPoint = "CorrectNote"
+	ref := tr.Refuse(inRequest("req-1"), "ACorrectionChangesSomething", "That correction changes nothing.")
+	if ref.Err != nil || ref.Rule != "ACorrectionChangesSomething" || ref.Context != "notes" || ref.Detail != "That correction changes nothing." {
+		t.Fatalf("Refused = %+v, want the rule, context notes and the detail, no Err", *ref)
+	}
+	got := lines(t)
+	if len(got) != 1 {
+		t.Fatalf("lines = %v, want one", got)
+	}
+	for k, want := range map[string]string{"msg": "refused", "level": "INFO", "rule": "ACorrectionChangesSomething",
+		"context": "notes", "entry_point": "CorrectNote", "actor": "member:3"} {
+		if got[0][k] != want {
+			t.Errorf("line %s = %v, want %q", k, got[0][k], want)
+		}
+	}
+	if n, m := landed(t, g); n != 0 || m != 0 {
+		t.Fatalf("a refusal landed %d notes, %d changes; want 0 and 0", n, m)
+	}
+}
+
+// A rule no invariant declares is a programming error: under go test
+// Refuse panics with ErrUndeclaredRule naming it, whether the name is
+// unknown, empty, or the Trail came from Begin and declares nothing.
+func TestARefusalByAnUndeclaredRulePanicsInTests(t *testing.T) {
+	t.Parallel()
+	logger, lines := jsonLines()
+	p := shapedPolicy()
+	p.Logger = logger
+	nameless := shapedPolicy() // an invariant named "" (decisions D4) is still no rule to refuse by
+	nameless.Logger = logger
+	nameless.Invariants = append(nameless.Invariants, changes.Invariant{Context: "notes", Guards: []string{"NoteCorrected"}})
+	for _, c := range []struct {
+		name string
+		tr   *changes.Trail
+		rule string
+	}{
+		{"unknown", p.Begin("member:3"), "NoSuchRule"},
+		{"empty", nameless.Begin("member:3"), ""},
+		{"from Begin", changes.Begin("member:3"), "ACorrectionChangesSomething"},
+	} {
+		func() {
+			defer func() {
+				err, _ := recover().(error)
+				if !errors.Is(err, changes.ErrUndeclaredRule) || !strings.Contains(err.Error(), `"`+c.rule+`"`) {
+					t.Errorf("%s: recovered %v, want ErrUndeclaredRule naming %q", c.name, err, c.rule)
+				}
+			}()
+			c.tr.Refuse(inRequest("req-1"), c.rule, "no")
+		}()
+	}
+	if got := lines(t); len(got) != 0 {
+		t.Fatalf("an undeclared refusal logged %v, want nothing", got)
+	}
+}
+
+// Outside tests the same programming error does not panic the
+// request: Refused.Err carries ErrUndeclaredRule and nothing is
+// logged as refused.
+func TestARefusalByAnUndeclaredRuleIsAnErrorInProduction(t *testing.T) {
+	t.Parallel()
+	logger, lines := jsonLines()
+	p := shapedPolicy()
+	p.Logger = logger
+	ref := changes.Lenient(p.Begin("member:3")).Refuse(inRequest("req-1"), "NoSuchRule", "no")
+	if !errors.Is(ref.Err, changes.ErrUndeclaredRule) || ref.Rule != "NoSuchRule" {
+		t.Fatalf("Refused = %+v, want Err ErrUndeclaredRule for NoSuchRule", *ref)
+	}
+	if got := lines(t); len(got) != 0 {
+		t.Fatalf("an undeclared refusal logged %v, want nothing", got)
+	}
+}
+
+// A Policy with no Logger logs its refusals to slog.Default().
+func TestARefusalWithoutALoggerUsesTheDefault(t *testing.T) {
+	t.Parallel()
+	if got := changes.LoggerOf(shapedPolicy().Begin("member:3")); got != slog.Default() {
+		t.Fatalf("logger = %p, want slog.Default() %p", got, slog.Default())
 	}
 }

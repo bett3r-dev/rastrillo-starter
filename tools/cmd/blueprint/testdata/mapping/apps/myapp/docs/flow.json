@@ -1,0 +1,248 @@
+{
+  "version": 2,
+  "app": "myapp",
+  "entry_points": [
+    {
+      "name": "BankReportedTransaction",
+      "context": "bank",
+      "reasons": [
+        "TransactionReported"
+      ],
+      "actors": [
+        "agent:bank"
+      ],
+      "rules": [
+        {
+          "reason": "TransactionReported",
+          "rule": "AnAmountIsWholeCents"
+        }
+      ]
+    },
+    {
+      "name": "CorrectNote",
+      "context": "notes",
+      "reasons": [
+        "NoteCorrected"
+      ],
+      "actors": [
+        "member"
+      ],
+      "rules": []
+    },
+    {
+      "name": "ImportNotes",
+      "context": "notes",
+      "reasons": [
+        "NoteWritten"
+      ],
+      "actors": [
+        "member"
+      ],
+      "rules": []
+    },
+    {
+      "name": "Join",
+      "context": "accounts",
+      "reasons": [
+        "MemberJoined"
+      ],
+      "actors": [
+        "human"
+      ],
+      "rules": []
+    },
+    {
+      "name": "WriteNote",
+      "context": "notes",
+      "reasons": [
+        "NoteWritten"
+      ],
+      "actors": [
+        "member"
+      ],
+      "rules": []
+    }
+  ],
+  "unnamed": [],
+  "policies": [
+    {
+      "from": {
+        "reason": "MemberJoined",
+        "context": "accounts"
+      },
+      "to": {
+        "reason": "WelcomeNoteWritten",
+        "context": "notes"
+      },
+      "scenarios": [
+        "TestScenarioJoining"
+      ],
+      "rules": [
+        {
+          "reason": "WelcomeNoteWritten",
+          "rule": "EveryNewMemberIsWelcomed"
+        }
+      ]
+    }
+  ],
+  "chains": [],
+  "empty": [],
+  "mixed": [],
+  "implicit_crossings": [],
+  "invariants": [
+    {
+      "name": "ACorrectionChangesSomething",
+      "context": "notes",
+      "rule": "A correction must change the note's title or its body.",
+      "guards": [
+        "NoteCorrected"
+      ],
+      "shapes": {},
+      "source": {
+        "file": "internal/myapp/reasons_notes.go",
+        "line": 48
+      }
+    },
+    {
+      "name": "AnAmountIsWholeCents",
+      "context": "bank",
+      "rule": "A transaction's amount is a whole number of cents.",
+      "guards": [],
+      "shapes": {
+        "TransactionReported": [
+          "bank_transactions"
+        ]
+      },
+      "source": {
+        "file": "internal/myapp/reasons_bank.go",
+        "line": 30
+      }
+    },
+    {
+      "name": "EveryNewMemberIsWelcomed",
+      "context": "notes",
+      "rule": "Every member who joins gets a welcome note.",
+      "guards": [],
+      "shapes": {
+        "WelcomeNoteWritten": [
+          "notes"
+        ]
+      },
+      "source": {
+        "file": "internal/myapp/reasons_notes.go",
+        "line": 55
+      }
+    }
+  ],
+  "writes": [
+    {
+      "reason": "MemberJoined",
+      "context": "accounts",
+      "tables": [
+        "members"
+      ]
+    },
+    {
+      "reason": "NoteCorrected",
+      "context": "notes",
+      "tables": [
+        "notes"
+      ]
+    },
+    {
+      "reason": "NoteWritten",
+      "context": "notes",
+      "tables": [
+        "notes"
+      ]
+    },
+    {
+      "reason": "TransactionReported",
+      "context": "bank",
+      "tables": [
+        "bank_transactions"
+      ]
+    },
+    {
+      "reason": "WelcomeNoteWritten",
+      "context": "notes",
+      "tables": [
+        "notes"
+      ]
+    }
+  ],
+  "sources": {
+    "entry_points": {
+      "BankReportedTransaction": {
+        "file": "internal/myapp/handlers.go",
+        "line": 410
+      },
+      "CorrectNote": {
+        "file": "internal/myapp/handlers.go",
+        "line": 305
+      },
+      "ImportNotes": {
+        "file": "internal/myapp/handlers.go",
+        "line": 360
+      },
+      "Join": {
+        "file": "internal/myapp/handlers.go",
+        "line": 100
+      },
+      "WriteNote": {
+        "file": "internal/myapp/handlers.go",
+        "line": 237
+      }
+    },
+    "reasons": {
+      "MemberJoined": {
+        "file": "internal/myapp/reasons_accounts.go",
+        "line": 13
+      },
+      "NoteCorrected": {
+        "file": "internal/myapp/reasons_notes.go",
+        "line": 19
+      },
+      "NoteWritten": {
+        "file": "internal/myapp/reasons_notes.go",
+        "line": 15
+      },
+      "TransactionReported": {
+        "file": "internal/myapp/reasons_bank.go",
+        "line": 12
+      },
+      "WelcomeNoteWritten": {
+        "file": "internal/myapp/reasons_notes.go",
+        "line": 23
+      }
+    },
+    "tables": {
+      "bank_transactions": {
+        "file": "internal/myapp/models.go",
+        "line": 72
+      },
+      "members": {
+        "file": "internal/myapp/models.go",
+        "line": 44
+      },
+      "notes": {
+        "file": "internal/myapp/models.go",
+        "line": 58
+      }
+    },
+    "invariants": {
+      "ACorrectionChangesSomething": {
+        "file": "internal/myapp/reasons_notes.go",
+        "line": 48
+      },
+      "AnAmountIsWholeCents": {
+        "file": "internal/myapp/reasons_bank.go",
+        "line": 30
+      },
+      "EveryNewMemberIsWelcomed": {
+        "file": "internal/myapp/reasons_notes.go",
+        "line": 55
+      }
+    }
+  }
+}

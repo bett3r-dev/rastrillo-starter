@@ -1,0 +1,31 @@
+{
+  "version": 2,
+  "app": "b",
+  "entry_points": [
+    {
+      "name": "Join",
+      "context": "accounts",
+      "reasons": [
+        "MemberJoined"
+      ],
+      "actors": [
+        "human"
+      ],
+      "rules": []
+    }
+  ],
+  "unnamed": [],
+  "policies": [],
+  "chains": [],
+  "empty": [],
+  "mixed": [],
+  "implicit_crossings": [],
+  "invariants": [],
+  "writes": [],
+  "sources": {
+    "entry_points": {},
+    "reasons": {},
+    "tables": {},
+    "invariants": {}
+  }
+}

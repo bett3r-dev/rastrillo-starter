@@ -5,14 +5,20 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
 
 	"amadan.net/rastrillo/rastrillo"
 	"amadan.net/rastrillo/rastrillo/budget"
+	"amadan.net/rastrillo/rastrillo/db"
+
+	myapp "myapp/internal/myapp"
 )
 
 func TestMain(m *testing.M) { os.Exit(budget.Main(m)) }
@@ -68,5 +74,50 @@ func TestTheIdleTimeoutIsOffUnsetAndRefusedMalformed(t *testing.T) {
 		if err := exitWhenIdle(&opts, v, log); err == nil {
 			t.Errorf("MYAPP_IDLE_TIMEOUT=%q accepted", v)
 		}
+	}
+}
+
+// `myapp verify -db <path>` over an instance where Ana joined: the
+// record explains every row, the welcome note's rule included (it is
+// a declared invariant, so verify is handed myapp.Invariants), and
+// exits 0. A note rewritten behind the hook's back then exits 1.
+func TestVerifyExplainsAnInstanceWhereSomeoneJoined(t *testing.T) {
+	t.Parallel()
+	const origin = "http://app.test"
+	path := filepath.Join(t.TempDir(), "myapp.db")
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	d, err := db.Open(path, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux, err := myapp.App(d, origin, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{"name": {"Ana"}, "email": {"ana@example.test"}, "password": {"correct horse battery"}}
+	req := httptest.NewRequest(http.MethodPost, "/signup", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", origin)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("join: status %d\n%s", rec.Code, rec.Body.String())
+	}
+	d.Close()
+
+	if code := verify([]string{"-db", path}); code != 0 {
+		t.Fatalf("verify after a join: exit %d, want 0", code)
+	}
+
+	d, err = db.Open(path, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.G.Exec("UPDATE notes SET title = 'Rewritten'").Error; err != nil {
+		t.Fatal(err)
+	}
+	d.Close()
+	if code := verify([]string{"-db", path}); code != 1 {
+		t.Fatalf("verify after a write the record does not explain: exit %d, want 1", code)
 	}
 }
