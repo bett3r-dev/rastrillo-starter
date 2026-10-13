@@ -79,3 +79,35 @@ sources: [code:Verify (libs/changes/verify.go), code:TestVerifyWithoutALedgerHol
 rejected: —
 supersedes: —
 The design's verify bullet names two checks (an undeclared rule at any age; a shaped record naming none after the cutoff); a record naming a declared rule that does not shape it is refused at write time (ErrRuleMismatch) but not re-checked after the fact. [doc] TestVerifyWithoutALedgerHoldsEveryRecord's middle case (a ledger without the 0005 row) now holds nothing, so its name describes only its first case; a rename is owed.
+
+## D11 — an agent's external system is one node per (agent, context), runtimeName without the agent: prefix, source its first entry point's
+kind: silent-seam
+step: build · slice: 2 · decidedBy: executor
+sources: [code:builder.app (tools/cmd/blueprint/main.go), design:Starter: the graph, edges table, map.json RS-20-F6]
+rejected: one node per actor across contexts — the id needs a context, and F3 already splits a command per context
+supersedes: —
+The design says "an external-system per agent:<name> actor" and is silent on context and source. The node sits in the context of the command it invokes (bank_ext_bank), so an agent invoking commands in two contexts draws two nodes; that case is untested. meta.runtimeName is `bank`, not `agent:bank`, so the id is the same from label or runtime name. Its meta.source is the first invoking entry point's in flow.json's entry_points order, pinned by TestAnAgentsSourceIsItsFirstEntryPoint.
+
+## D12 — a node with no source in flow.json gets no meta.source; invariant sources are read from sources.invariants
+kind: deviation
+step: build · slice: 2 · decidedBy: executor
+sources: [code:builder.node (tools/cmd/blueprint/main.go), design:meta.source on every node]
+rejected: a placeholder source — blueprint-schema requires a real {file, line}
+supersedes: —
+"meta.source on every node" holds only for a complete flow.json; slice 8's census gives every name a source, so a gap means a malformed flow.json. Slice 3's behaviour does not yet diagnose it: hand-off owed to slice 3 or 8. meta.source is repository-relative (apps/<app>/ plus the app-relative path), as pv3's fixtures are. flow.json also carries invariants[].source, which the extractor does not read; slice 8 must produce both from the same scan.
+
+## D13 — a rule a hop names that no invariant declares exits 1
+kind: silent-seam
+step: build · slice: 2 · decidedBy: executor
+sources: [design:F5, decisions:D6]
+rejected: a diagnostic only — F5 governs diagnostics over a readable map, and an undeclared rule is unreadable input (the hook refuses it, so only a stale or hand-edited flow.json gets here)
+supersedes: —
+In the spirit of D6, the extractor names the rule and says to run make flow. Slice 3 must keep it at exit 1.
+
+## D14 — a command's guard edge is not checked against its context; noBleed does not cover invariants
+kind: shipped-finding
+step: build · slice: 2 · decidedBy: verifier
+sources: [code:noBleed (apps/myapp/internal/myapptest/scenario_test.go:196-203), decisions:D4]
+rejected: —
+supersedes: —
+The executor justified this by noBleed; the verifier found that false: noBleed compares a change's reason context with its table context and never reads invariants, and Install does not enforce an invariant's Context or Guards (D4). A mis-declared invariant would draw a guarded-by edge across subdomains. Owner: Install's check when slice 6 adds the first real invariants, or a slice 3 diagnostic. Policies are guarded by F11 only (the rules their hop names); an invariant shaping a reason only a policy lands draws no command edge.
