@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ci-gate runs the targets of a Makefile's ci line, one by one, and
-# certifies only what ran (pv4's seams ADR, rule 5; "a SKIP is not a
+# certifies only what ran (rustrillo's seams ADR, rule 5; "a SKIP is not a
 # pass"). Every Makefile's ci is this script over its CI list:
 #
 #   ci:

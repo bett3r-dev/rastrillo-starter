@@ -22,7 +22,7 @@ it differently:
   exec to the first response through an inherited socket, about 50 MB
   RSS idle, a 35 MB binary. "One process serving many SQLite files"
   was rejected there.
-- **pv4** (rustrillo, its ADR 0002) put a `TenantResolver` seam in
+- **rustrillo** (its ADR 0002) put a `TenantResolver` seam in
   front of the database: the default resolves the one configured
   database (one process per tenant); the alternative maps a host to a
   database file, opens pools lazily and closes idle tenants LRU, all in
@@ -62,7 +62,7 @@ through a test issuer instead of joining through `/signup`.
 
 ## The option held in reserve: one process, many databases
 
-pv4's resolver is the way to serve many tenants from one process: a
+rustrillo's resolver is the way to serve many tenants from one process: a
 router in front resolves the whole app per tenant (one `App` per
 database, opened lazily, closed LRU), so handlers do not change.
 Blueprint2's objection, that every handler would change, is not the
@@ -98,7 +98,7 @@ for free and one process does not:
 
 ## Rejected
 
-- **A shared schema with a tenant column** (pv4's option A): the
+- **A shared schema with a tenant column** (rustrillo's option A): the
   opposite of convention 1. Every query would carry the check, and
   one missed `WHERE` is a leak.
 - **Kubernetes** (gastos's ADR 0006, as blueprint2's ADR 0006

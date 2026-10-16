@@ -13,14 +13,14 @@ A rastrillo repository already knows what its code does: every scenario lands ch
 
 - `flow.json` has its own shape, not Blueprint's `graph.json`.
 - Nothing writes `.blueprint/`, so Steward has nothing to push.
-- blueprint-go enforces the DDD eventstorming grammar (commands handled by aggregates or systems, policies issuing commands). A rastrillo app has neither aggregates nor systems: a context lands its own fact in reaction to another's (`MemberJoined[accounts] ⟹ WelcomeNoteWritten[notes]`). Squeezing that into DDD needs invented boxes, as pv4's RUS-84 (*gastos-rs describe*) had to: a `system` per context, a derived `Cross{From}To{To}` command per crossing, and a new Blueprint triple for agents.
+- blueprint-go enforces the DDD eventstorming grammar (commands handled by aggregates or systems, policies issuing commands). A rastrillo app has neither aggregates nor systems: a context lands its own fact in reaction to another's (`MemberJoined[accounts] ⟹ WelcomeNoteWritten[notes]`). Squeezing that into DDD needs invented boxes, as rustrillo's RUS-84 (*gastos-rs describe*) had to: a `system` per context, a derived `Cross{From}To{To}` command per crossing, and a new Blueprint triple for agents.
 - The starter declares no invariant, so the rule a write obeyed and the rule a refusal enforced are on no record and in no graph.
 
 ## Solution
 
 From the owner's side:
 
-1. **Invariants are named, in pv4's RUS-83 shape.** Each context declares its rules beside its reasons. A write a rule shaped carries the rule on its change record. A refusal names its rule, lands nothing, logs one line and marks the screen with `data-rule`.
+1. **Invariants are named, in rustrillo's RUS-83 shape.** Each context declares its rules beside its reasons. A write a rule shaped carries the rule on its change record. A refusal names its rule, lands nothing, logs one line and marks the screen with `data-rule`.
 2. **`make blueprint` writes `.blueprint/graph.json` and `.blueprint/diagnostics.json`** at the repository root. It reads every app's committed `flow.json`, now at version 2 and carrying the rules, invariants, tables and sources the graph needs. The graph has the structure **command → invariant → [context] event → policy (only across contexts) → [other context] event**.
 3. **`.blueprint.config.json` (committed) says `framework: "non-ddd"`** and names `make blueprint` as `designTooling.extract`. The extractor stamps `framework` into `graph.json`, so Steward pushes it unchanged.
 4. **blueprint-go reads the framework off the session's latest reality graph** and validates design proposals, and serves `legalKinds`, under that framework's grammar. A graph with no `framework`, or a session with no push yet, stays `ddd`, so pv3 repositories see no change.
@@ -203,7 +203,7 @@ resolved_by: human
   Both name the reason, the table and the rule, as `ErrReasonMismatch` does.
 - **`changes.rule TEXT NULL`** is migration `libs/changes/migrations/0005_changes_rule.sql`. `Change.Rule` is added, the append-only trigger is unchanged, and `/changes.json` gains `rule`, omitted when null. AGENTS.md's field-name contract gains `rule` in the same commit. `/changes` shows ` · by rule <Name>`.
 - **`(*Trail).Refuse(ctx, rule, detail) *Refused`** lands nothing. It writes one `InfoContext` line `refused` with `rule`, `context`, `entry_point` and `actor`; `telemetry.Correlate` adds `trace_id`. A rule no context declares panics in tests and is an error in production: an undeclared name is a programming error, like an undeclared reason.
-- **`verify`** checks every record whose rule no declared invariant has (any age), and every shaped (reason, table) record without a rule, **but only for records created after `0005_changes_rule`'s ledger `applied_at`**. This ports pv4's RUS-83 D11 (*a record from before the rule column is not held to name one*). Without that cutoff, every existing instance fails verify forever. **UNVERIFIED:** that rastrillo's migrate ledger exposes `applied_at`. Build checks this first; the fallback is the first record whose `rule` column exists.
+- **`verify`** checks every record whose rule no declared invariant has (any age), and every shaped (reason, table) record without a rule, **but only for records created after `0005_changes_rule`'s ledger `applied_at`**. This ports rustrillo's RUS-83 D11 (*a record from before the rule column is not held to name one*). Without that cutoff, every existing instance fails verify forever. **UNVERIFIED:** that rastrillo's migrate ledger exposes `applied_at`. Build checks this first; the fallback is the first record whose `rule` column exists.
 
 ### Starter: myapp
 
@@ -336,7 +336,7 @@ The seams, highest first, each with prior art:
 ## Provenance
 
 - Handoff: `.work/handoff/blueprint-graph-non-ddd.md` (session d273410e). Its Durable region is folded above.
-- pv4: `docs/prs/RUS-83/{design,decisions}.md` and `.work/multi/multi-rus-loop/units/RUS-84.ticket-block.md`, read in full this session.
+- rustrillo: `docs/prs/RUS-83/{design,decisions}.md` and `.work/multi/multi-rus-loop/units/RUS-84.ticket-block.md`, read in full this session.
 - Re-run to re-derive the grounding:
   - `sed -n 1,130p ../blueprint-go-non-ddd/apps/server/internal/server/design/vocabulary.go`
   - `grep -rn "IsAllowedEdge\|AllowedEdgeKinds" ../blueprint-go-non-ddd/apps --include='*.go'`

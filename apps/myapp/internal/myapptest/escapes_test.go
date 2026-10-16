@@ -17,7 +17,7 @@ import (
 	myapp "myapp/internal/myapp"
 )
 
-// The escape-hatch census (pv4's seams ADR, rule 3: every escape hatch
+// The escape-hatch census (rustrillo's seams ADR, rule 3: every escape hatch
 // is counted by a census test). Every way around the change hook is
 // found in the source and named below with a reason, so a new one
 // fails here by file and line instead of slipping past review:
