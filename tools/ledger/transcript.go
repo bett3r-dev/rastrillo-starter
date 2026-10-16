@@ -54,12 +54,14 @@ type block struct {
 func Records(lines [][]byte, author, fallback string) ([]Batch, error) {
 	var order []string
 	batches := map[string]*Batch{}
+	// A streamed model call is several lines sharing message.id, its
+	// usage growing as it streams: the last line holds the final count,
+	// so each call keeps the usage of its latest line.
 	type tally struct {
-		tokens Tokens
-		seen   map[string]bool
-		model  string
-		ts     string
-		sess   string
+		calls map[string]Tokens
+		model string
+		ts    string
+		sess  string
 	}
 	usage := map[string]*tally{}
 
@@ -110,16 +112,14 @@ func Records(lines [][]byte, author, fallback string) ([]Batch, error) {
 			if u := e.Message.Usage; u != nil && e.Message.Model != "<synthetic>" {
 				t := usage[branch]
 				if t == nil {
-					t = &tally{seen: map[string]bool{}}
+					t = &tally{calls: map[string]Tokens{}}
 					usage[branch] = t
 				}
-				if id := e.Message.ID; id == "" || !t.seen[id] {
-					t.seen[id] = true
-					t.tokens.In += u.Input
-					t.tokens.CacheRead += u.CacheRead
-					t.tokens.CacheNew += u.CacheNew
-					t.tokens.Out += u.Output
+				id := e.Message.ID
+				if id == "" {
+					id = fmt.Sprintf("line %d", i+1) // no id to share: a call of its own
 				}
+				t.calls[id] = Tokens{In: u.Input, CacheRead: u.CacheRead, CacheNew: u.CacheNew, Out: u.Output}
 				t.model, t.ts, t.sess = e.Message.Model, ts, e.SessionID
 			}
 		}
@@ -139,7 +139,13 @@ func Records(lines [][]byte, author, fallback string) ([]Batch, error) {
 	for _, br := range order {
 		b := *batches[br]
 		if t := usage[br]; t != nil {
-			tok := t.tokens
+			var tok Tokens
+			for _, c := range t.calls {
+				tok.In += c.In
+				tok.CacheRead += c.CacheRead
+				tok.CacheNew += c.CacheNew
+				tok.Out += c.Out
+			}
 			b.Records = append(b.Records, Record{Type: TypeUsage, TS: t.ts, Session: t.sess, Model: t.model, Tokens: &tok})
 		}
 		out = append(out, b)

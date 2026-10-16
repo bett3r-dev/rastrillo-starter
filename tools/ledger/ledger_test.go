@@ -84,6 +84,36 @@ const transcript = `{"type":"user","timestamp":"2026-10-07T23:50:35.120Z","sessi
 {"type":"assistant","timestamp":"2026-10-07T23:51:00Z","sessionId":"s1","gitBranch":"ledger","message":{"id":"m2","model":"claude-opus-5-5","content":[{"type":"text","text":"On the branch now."}],"usage":{"input_tokens":1,"cache_read_input_tokens":50,"cache_creation_input_tokens":0,"output_tokens":7}}}
 `
 
+// A streamed model call is written as several lines whose usage grows
+// as the reply streams: only the last line carries the final output
+// count. The ledger counts each call once, at that last count, as
+// run-metrics does; the first copy undercounted output about 3x on a
+// real build (pv4 D46).
+func TestAStreamedCallCountsItsFinalUsage(t *testing.T) {
+	t.Parallel()
+	streamed := `{"type":"assistant","timestamp":"2026-10-16T10:00:00Z","sessionId":"s1","gitBranch":"main","message":{"id":"m1","model":"claude-opus-5-5","content":[{"type":"thinking","thinking":"hm"}],"usage":{"input_tokens":3,"cache_read_input_tokens":900,"cache_creation_input_tokens":40,"output_tokens":1}}}
+{"type":"assistant","timestamp":"2026-10-16T10:00:01Z","sessionId":"s1","gitBranch":"main","message":{"id":"m1","model":"claude-opus-5-5","content":[{"type":"text","text":"Done."}],"usage":{"input_tokens":3,"cache_read_input_tokens":900,"cache_creation_input_tokens":40,"output_tokens":12}}}
+{"type":"assistant","timestamp":"2026-10-16T10:00:02Z","sessionId":"s1","gitBranch":"main","message":{"id":"m1","model":"claude-opus-5-5","content":[{"type":"tool_use","name":"Bash","input":{"command":"ls"}}],"usage":{"input_tokens":3,"cache_read_input_tokens":900,"cache_creation_input_tokens":40,"output_tokens":250}}}
+{"type":"assistant","timestamp":"2026-10-16T10:00:09Z","sessionId":"s1","gitBranch":"main","message":{"id":"m2","model":"claude-opus-5-5","content":[{"type":"text","text":"Next."}],"usage":{"input_tokens":1,"cache_read_input_tokens":1000,"cache_creation_input_tokens":0,"output_tokens":30}}}
+`
+	var lines [][]byte
+	for l := range strings.SplitSeq(streamed, "\n") {
+		lines = append(lines, []byte(l))
+	}
+	batches, err := ledger.Records(lines, "claude~ana@example.com", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	recs := batches[0].Records
+	u := recs[len(recs)-1]
+	if u.Type != ledger.TypeUsage {
+		t.Fatalf("last record = %+v, want the usage", u)
+	}
+	if *u.Tokens != (ledger.Tokens{In: 4, CacheRead: 1900, CacheNew: 40, Out: 280}) {
+		t.Errorf("usage = %+v, want m1's final copy (out 250) plus m2 (out 30): {In:4 CacheRead:1900 CacheNew:40 Out:280}", *u.Tokens)
+	}
+}
+
 // A transcript becomes prompts, replies, tool calls and one usage per
 // branch, each line on the ledger of the branch it was written on.
 // Thinking, meta lines and tool output never reach the ledger, and a
