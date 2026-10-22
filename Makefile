@@ -11,7 +11,7 @@
 
 # The same named Go as every app's Makefile; toolchain-check holds
 # them equal. Raise all of them together with each Go security release.
-export GOTOOLCHAIN = go1.26.9
+export GOTOOLCHAIN = go1.26.10
 
 APPS := $(patsubst apps/%/,%,$(sort $(wildcard apps/*/)))
 SHARED := libs tools

@@ -10,7 +10,7 @@ APP := myapp
 # A plain =, not ?=: Go's container images set GOTOOLCHAIN=local, and ?=
 # would quietly keep whatever Go they ship. To override for one run:
 #   make ci GOTOOLCHAIN=local
-export GOTOOLCHAIN = go1.26.9
+export GOTOOLCHAIN = go1.26.10
 
 # What `carlos ship -target` defaults to, and therefore what a release
 # must be built for. Building for your own machine and shipping that is a
